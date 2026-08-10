@@ -176,8 +176,8 @@ const ENV = (typeof process !== "undefined" && process.env) ? process.env : {};
 // SANS REPLI : la config vient UNIQUEMENT des variables d environnement Vercel.
 // Si elles sont absentes, le garde-fou "Portail non configure" s affiche.
 // C est le test qui prouve que les variables sont bien lues.
-const SUPABASE_URL = ENV.REACT_APP_SUPABASE_URL || "";
-const SUPABASE_KEY = ENV.REACT_APP_SUPABASE_KEY || "";
+const SUPABASE_URL = "https://jdpohwabufwgrgjjzrlc.supabase.co";  // POMLIGNE en dur
+const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpkcG9od2FidWZ3Z3Jnamp6cmxjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODYzMDMxNTMsImV4cCI6MjEwMTg3OTE1M30.CiZosF9-q-rZVz8JugMJHuEUe8gSuTKdETZUCxg2ZLg";  // <-- colle la cle anon de Pomligne (eyJ...)
 
 // ============================================================
 // MULTI-SITES
