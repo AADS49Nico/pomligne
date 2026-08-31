@@ -1294,11 +1294,13 @@ function Dashboard({ onNav, reinterventions, onLogoClick, onParamsClick, passage
             <div style={{ fontSize: 18, fontWeight: 800, color: "#ef4444" }}>{reinterventionsAnnee.length}</div>
             <div style={{ fontSize: 10, color: "#7a90aa", marginTop: 2 }}>Réinterventions</div>
           </div>
-          {/* Suivis post-consommation (auto) : forme distincte, fond blanc */}
+          {/* Suivis post-consommation (auto) : Vergers uniquement */}
+          {REINTERV_POST_CONSO && (
           <div style={{ background: "#ffffff", border: "1px solid #94a3b8", borderRadius: 10, padding: "10px 18px" }}>
             <div style={{ fontSize: 18, fontWeight: 800, color: "#334155" }}>{suivisPostConso.length}</div>
             <div style={{ fontSize: 10, color: "#64748b", marginTop: 2 }}>Suivis post-conso</div>
           </div>
+          )}
           <div style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 10, padding: "10px 18px" }}>
             <div style={{ fontSize: 18, fontWeight: 800, color: "#a78bfa" }}>{last.date}</div>
             <div style={{ fontSize: 10, color: "#7a90aa", marginTop: 2 }}>Dernier passage périodique</div>
@@ -8163,6 +8165,7 @@ function SaisiePassage({ seuilsGlobaux, setSeuilsGlobaux, setReinterventions, se
               <button onClick={()=>setShowReinvForm(v=>!v)} style={{background:"#ef4444",color:"#fff",border:"none",borderRadius:9,padding:"10px 18px",fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
                 + Reintervention
               </button>
+              {REINTERV_POST_CONSO && (
               <button onClick={()=>{
                 const t=new Date();
                 const iso=t.getFullYear()+"-"+("0"+(t.getMonth()+1)).slice(-2)+"-"+("0"+t.getDate()).slice(-2);
@@ -8171,6 +8174,7 @@ function SaisiePassage({ seuilsGlobaux, setSeuilsGlobaux, setReinterventions, se
               }} style={{background:"#ffffff",color:"#334155",border:"1px solid #94a3b8",borderRadius:9,padding:"10px 18px",fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
                 + Contrôle post conso
               </button>
+              )}
               {prevPassagesData && (
                 <button onClick={()=>{setPassagesData(prevPassagesData);setPrevPassagesData(null);}}
                   style={{background:"#f59e0b22",color:"#f59e0b",border:"1px solid #f59e0b44",borderRadius:9,padding:"10px 16px",fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
