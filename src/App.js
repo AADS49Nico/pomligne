@@ -335,6 +335,33 @@ function sanitizeFileName(name) {
     .replace(/_+/g, "_");                                // compacte les _ multiples
 }
 
+// Compresse une image (dataURL) : redimensionne a maxW px de large et re-encode
+// en JPEG qualite q. Un plan d implantation en base64 passe ainsi de plusieurs Mo
+// a quelques centaines de Ko -> l enregistrement aboutit meme sur connexion lente.
+// En cas d echec (navigateur, image illisible), renvoie l original sans planter.
+function compresserImage(dataUrl, maxW, q) {
+  return new Promise(function (resolve) {
+    try {
+      if (!dataUrl || String(dataUrl).indexOf("data:image") !== 0) { resolve(dataUrl); return; }
+      var img = new Image();
+      img.onload = function () {
+        try {
+          var w = img.width, h = img.height;
+          if (w > maxW) { h = Math.round(h * maxW / w); w = maxW; }
+          var cv = document.createElement("canvas");
+          cv.width = w; cv.height = h;
+          cv.getContext("2d").drawImage(img, 0, 0, w, h);
+          var out = cv.toDataURL("image/jpeg", q || 0.72);
+          // on ne garde la version compressee que si elle est effectivement plus petite
+          resolve(out && out.length < dataUrl.length ? out : dataUrl);
+        } catch (_e) { resolve(dataUrl); }
+      };
+      img.onerror = function () { resolve(dataUrl); };
+      img.src = dataUrl;
+    } catch (_e) { resolve(dataUrl); }
+  });
+}
+
 // Deduit la categorie 5M (Milieu / Matiere / Materiel / Methode / Main d'oeuvre)
 // a partir du texte d'une description. Priorite a la position "— X —" (format des
 // audits importes), puis recherche libre insensible aux accents. Defaut : Methode.
@@ -12955,7 +12982,9 @@ function PlanImplantation({ seuilsGlobaux }) {
 
   function handlePlanUpload(e) {
     const file=e.target.files[0];if(!file)return;
-    const r=new FileReader();r.onload=ev=>setNewPlanImg(ev.target.result);r.readAsDataURL(file);
+    const r=new FileReader();
+    r.onload=ev=>{ compresserImage(ev.target.result, 1600, 0.72).then(function(small){ setNewPlanImg(small); }); };
+    r.readAsDataURL(file);
   }
 
   // Ajoute une image (page) au plan courant. Les postes deja poses ne bougent pas.
@@ -12967,7 +12996,7 @@ function PlanImplantation({ seuilsGlobaux }) {
     const file=e.target.files[0]; if(!file){ return; }
     const r=new FileReader();
     r.onload=ev=>{
-      const dataUrl=ev.target.result;
+      compresserImage(ev.target.result, 1600, 0.72).then(function(dataUrl){
       const plan=plans.find(p=>p.id===activePlan); if(!plan) return;
       var imgs = normImgs(plan);
       var nm = window.prompt("Nom de ce plan (ex: RDC, Etage 1, Sous-sol) :", "Plan "+(imgs.length+1)) || ("Plan "+(imgs.length+1));
@@ -12976,6 +13005,7 @@ function PlanImplantation({ seuilsGlobaux }) {
       sbUpdate("plans", activePlan, { img_url:(imgs[0]&&imgs[0].url)||"" });
       sbUpdate("plans", activePlan, { images: JSON.stringify(imgs) });
       setActivePageByPlan(prev=>({...prev,[activePlan]:imgs.length-1}));
+      });
     };
     r.readAsDataURL(file);
     e.target.value="";
