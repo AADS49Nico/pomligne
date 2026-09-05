@@ -1037,6 +1037,150 @@ function exportHTML(title, htmlBody) {
   setTimeout(() => win.print(), 600);
 }
 
+// ============================================================
+// FICHE D'INTERVENTION (PDF par passage) + SIGNATURE
+// ============================================================
+// Pad de signature electronique (souris + tactile). value = data URL PNG.
+function SignaturePad({ value, onChange }) {
+  const canvasRef = useRef(null);
+  const drawing = useRef(false);
+  const dirty = useRef(false);
+  function remplirBlanc(){ const c=canvasRef.current; if(!c)return; const ctx=c.getContext("2d"); ctx.fillStyle="#ffffff"; ctx.fillRect(0,0,c.width,c.height); }
+  useEffect(()=>{ remplirBlanc(); }, []);
+  function pos(e){ const c=canvasRef.current; const r=c.getBoundingClientRect(); const t=(e.touches&&e.touches[0])||e; return { x:(t.clientX-r.left)*(c.width/r.width), y:(t.clientY-r.top)*(c.height/r.height) }; }
+  function down(e){ drawing.current=true; const ctx=canvasRef.current.getContext("2d"); const p=pos(e); ctx.beginPath(); ctx.moveTo(p.x,p.y); if(e.cancelable)e.preventDefault(); }
+  function move(e){ if(!drawing.current)return; const ctx=canvasRef.current.getContext("2d"); const p=pos(e); ctx.lineTo(p.x,p.y); ctx.strokeStyle="#0f172a"; ctx.lineWidth=2.2; ctx.lineCap="round"; ctx.lineJoin="round"; ctx.stroke(); dirty.current=true; if(e.cancelable)e.preventDefault(); }
+  function up(){ if(!drawing.current)return; drawing.current=false; if(dirty.current){ try{ onChange(canvasRef.current.toDataURL("image/png")); }catch(_e){} } }
+  function effacer(){ remplirBlanc(); dirty.current=false; onChange(""); }
+  return (
+    <div>
+      <div style={{fontSize:10,color:"#7a90aa",fontWeight:600,textTransform:"uppercase",marginBottom:4}}>Signature technicien</div>
+      {value && !dirty.current && (
+        <div style={{marginBottom:6}}>
+          <img src={value} alt="Signature" style={{height:60,background:"#fff",borderRadius:6,border:"1px solid #3d5270",padding:2}}/>
+          <div style={{fontSize:10,color:"#22c55e",marginTop:2}}>Signature enregistrée — signez à nouveau pour la remplacer.</div>
+        </div>
+      )}
+      <canvas ref={canvasRef} width={520} height={150}
+        onMouseDown={down} onMouseMove={move} onMouseUp={up} onMouseLeave={up}
+        onTouchStart={down} onTouchMove={move} onTouchEnd={up}
+        style={{width:"100%",maxWidth:520,height:150,background:"#fff",borderRadius:8,border:"1px solid #3d5270",touchAction:"none",cursor:"crosshair",display:"block"}}/>
+      <button type="button" onClick={effacer} style={{marginTop:6,background:"transparent",color:"#7a90aa",border:"1px solid #3d5270",borderRadius:7,padding:"4px 12px",fontSize:11,cursor:"pointer",fontFamily:"inherit"}}>Effacer</button>
+    </div>
+  );
+}
+
+function _ficheCaptures(s){ let n=0; if(s) Object.keys(s).forEach(k=>{ if(k.indexOf("cap_")===0){ const v=parseInt(s[k]||0); if(!isNaN(v)) n+=v; } }); return n; }
+function _ficheConsomme(s){ const e=(s&&s.etat!=null)?String(s.etat).trim():""; if(!e)return false; const l=e.toLowerCase(); return l!=="aucune"&&l!=="ras"&&l!=="0"&&l!=="non"; }
+function _ficheExterieur(po){ if(!po)return false; if(po.type==="RE")return true; if(po.type==="RI")return false; return /ext/i.test(String(po.macro||po.zone||"")); }
+
+// Genere et imprime (PDF navigateur) la fiche d'intervention d'un passage.
+function genererFicheIntervention(p, postesTous, planActions){
+  const esc = t=>String(t==null?"":t).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+  let saisies = {};
+  try { saisies = typeof p.saisies==="string" ? JSON.parse(p.saisies||"{}") : (p.saisies||{}); } catch(_e){ saisies = {}; }
+  const posteById = {}; (postesTous||[]).forEach(po=>{ posteById[po.id]=po; });
+  const isDeiv = p.type==="Insectes volants";
+  const H3 = "font-size:13px;color:#0f2864;border-bottom:1px solid #e5e7eb;padding-bottom:4px;margin:18px 0 8px";
+
+  // Regroupement intérieur / extérieur (postes rongeurs)
+  const grp = { int:[], ext:[] };
+  Object.keys(saisies).forEach(id=>{
+    const s=saisies[id]; if(s==null) return;
+    const po = posteById[id] || { id, zone:"", macro:"", type:"" };
+    (_ficheExterieur(po)?grp.ext:grp.int).push({ id, po, s });
+  });
+  const triNat=(a,b)=>String(a.id).localeCompare(String(b.id),undefined,{numeric:true});
+  grp.int.sort(triNat); grp.ext.sort(triNat);
+  const stats=list=>{ const c=list.length; const t=list.filter(x=>_ficheConsomme(x.s)||_ficheCaptures(x.s)>0).length; return {c,t,taux:c>0?Math.round(t/c*100):0}; };
+  const sInt=stats(grp.int), sExt=stats(grp.ext);
+
+  function carte(titre, st, coul){
+    return "<div style='flex:1;min-width:150px;border:1px solid #e5e7eb;border-radius:10px;padding:10px 14px'>"+
+      "<div style='font-size:11px;color:#6b7280;font-weight:700;text-transform:uppercase'>"+titre+"</div>"+
+      "<div style='font-size:26px;font-weight:800;color:"+coul+"'>"+st.taux+"%</div>"+
+      "<div style='font-size:11px;color:#374151'>"+st.t+" poste(s) touché(s) / "+st.c+" contrôlé(s)</div>"+
+    "</div>";
+  }
+  function tableGroupe(titre, list, st){
+    if(!list.length) return "";
+    const cell = "border:1px solid #e5e7eb;padding:4px 8px";
+    const rows = list.map(x=>{
+      const s=x.s||{}, po=x.po||{};
+      const cap=_ficheCaptures(s), cons=_ficheConsomme(s);
+      const etat = (s.etat!=null && String(s.etat).trim()!=="") ? esc(s.etat) : "RAS";
+      const el = String(s.etat||"").toLowerCase();
+      const etatColor = cons ? ((el.indexOf("tot")>=0||el.indexOf("100")>=0||el.indexOf("75")>=0)?"#dc2626":"#d97706") : "#16a34a";
+      const mol = esc(s.molecule || po.molecule_actuelle || "—");
+      return "<tr><td style='"+cell+";font-weight:700;font-family:monospace'>"+esc(x.id)+"</td><td style='"+cell+"'>"+esc(po.zone||"")+"</td><td style='"+cell+"'>"+esc(po.macro||"")+"</td>"+
+        "<td style='"+cell+";color:"+etatColor+";font-weight:700'>"+etat+"</td><td style='"+cell+"'>"+mol+"</td><td style='"+cell+";text-align:center'>"+(cap>0?cap:"—")+"</td></tr>";
+    }).join("");
+    return "<div style='"+H3+"'>"+titre+" — "+st.t+" touché(s) / "+st.c+" contrôlé(s) · "+st.taux+"% d'activité</div>"+
+      "<table style='width:100%;border-collapse:collapse;font-size:11px'><thead><tr>"+
+      ["Poste","Zone","Macro-zone","État","Molécule","Captures"].map(h=>"<th style='background:#f1f5f9;border:1px solid #e5e7eb;padding:5px 8px;text-align:left'>"+h+"</th>").join("")+
+      "</tr></thead><tbody>"+rows+"</tbody></table>";
+  }
+
+  // Corps : rongeurs (int/ext) OU DEIV (captures par appareil)
+  let corps = "";
+  if(isDeiv){
+    const CATS=["Moucherons","Mouches","Moustiques","Hyménoptères","Lépidoptères","Coléoptères","Punaises","Tipules"];
+    const rows = Object.keys(saisies).map(id=>{ const s=saisies[id]||{}; const tot=CATS.reduce((a,c)=>a+(parseInt(s["iv_"+c]||0)||0),0); const po=posteById[id]||{}; return "<tr><td style='border:1px solid #e5e7eb;padding:4px 8px;font-family:monospace;font-weight:700'>"+esc(id)+"</td><td style='border:1px solid #e5e7eb;padding:4px 8px'>"+esc(po.zone||"")+"</td><td style='border:1px solid #e5e7eb;padding:4px 8px;text-align:center'>"+tot+"</td></tr>"; }).join("");
+    corps = "<div style='"+H3+"'>Appareils DEIV — captures</div>"+
+      "<table style='width:100%;border-collapse:collapse;font-size:11px'><thead><tr>"+
+      ["Appareil","Zone","Insectes capturés"].map(h=>"<th style='background:#f1f5f9;border:1px solid #e5e7eb;padding:5px 8px;text-align:left'>"+h+"</th>").join("")+
+      "</tr></thead><tbody>"+rows+"</tbody></table>";
+  } else {
+    corps = "<div style='display:flex;gap:12px;flex-wrap:wrap;margin:14px 0'>"+
+        carte("Activité intérieur", sInt, sInt.taux>=50?"#dc2626":sInt.taux>=20?"#d97706":"#16a34a")+
+        carte("Activité extérieur", sExt, sExt.taux>=50?"#dc2626":sExt.taux>=20?"#d97706":"#16a34a")+
+        "<div style='flex:1;min-width:150px;border:1px solid #e5e7eb;border-radius:10px;padding:10px 14px'>"+
+          "<div style='font-size:11px;color:#6b7280;font-weight:700;text-transform:uppercase'>Postes touchés</div>"+
+          "<div style='font-size:15px;font-weight:800;color:#0f2864;margin-top:4px'>Int. "+sInt.t+" · Ext. "+sExt.t+"</div>"+
+          "<div style='font-size:11px;color:#374151'>sur "+(sInt.c+sExt.c)+" postes contrôlés</div>"+
+        "</div>"+
+      "</div>"+
+      tableGroupe("Postes intérieurs", grp.int, sInt)+
+      tableGroupe("Postes extérieurs", grp.ext, sExt);
+  }
+
+  // Recommandations du jour = actions du plan d'actions datées du même jour
+  const recos = (planActions||[]).filter(a=> String(a.date_detection||a.dateDetection||"")===String(p.date));
+  const recosHtml = recos.length ? recos.map(a=>{
+    let photos=[]; try{ photos = Array.isArray(a.photos)?a.photos:(typeof a.photos==="string"?JSON.parse(a.photos||"[]"):[]); }catch(_e){ photos=[]; }
+    const ph = (photos||[]).filter(x=>x&&x.url).map(x=>"<img src='"+x.url+"' style='max-width:180px;max-height:135px;border-radius:6px;border:1px solid #e2e8f0;object-fit:cover;margin:4px'/>").join("");
+    return "<div style='border:1px solid #e5e7eb;border-radius:8px;padding:10px 12px;margin-bottom:8px'>"+
+      "<div style='font-weight:700;color:#1d4ed8'>"+esc(a.titre5m||a.type||"Action")+(a.priorite?" · "+esc(a.priorite):"")+(a.zone?" · "+esc(a.zone):"")+"</div>"+
+      (a.description?"<div style='margin-top:4px'>"+esc(a.description)+"</div>":"")+
+      (a.recommandation?"<div style='margin-top:4px'><strong>Recommandation :</strong> "+esc(a.recommandation)+"</div>":"")+
+      (ph?"<div style='margin-top:6px'>"+ph+"</div>":"")+
+    "</div>";
+  }).join("") : "<div style='color:#6b7280;font-size:12px'>Aucune recommandation enregistrée pour cette date.</div>";
+
+  const notesHtml = (p.notes && String(p.notes).trim()) ? "<div style='background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:10px 12px;white-space:pre-wrap;font-size:12px'>"+esc(p.notes)+"</div>" : "<div style='color:#6b7280;font-size:12px'>—</div>";
+
+  const sigTech = p.signature ? "<img src='"+p.signature+"' style='height:70px;max-width:100%;background:#fff'/>" : "<div style='height:56px;border-bottom:1px solid #9ca3af'></div>";
+  const signatureHtml = "<div style='display:flex;gap:40px;margin-top:26px'>"+
+    "<div style='flex:1'><div style='font-size:11px;color:#6b7280;margin-bottom:6px'>Technicien : <strong>"+esc(p.technicien||"")+"</strong></div>"+sigTech+"</div>"+
+    "<div style='flex:1'><div style='font-size:11px;color:#6b7280;margin-bottom:6px'>Représentant du site</div><div style='height:56px;border-bottom:1px solid #9ca3af'></div></div>"+
+  "</div>";
+
+  const typeLabel = isDeiv ? "Passage DEIV (insectes volants)" : ("Contrôle périodique"+(p.type&&p.type!=="Rongeurs"?" — "+esc(p.type):""));
+  const body =
+    "<h1 style='font-size:20px;color:#0f2864;margin:0 0 6px'>Fiche d'intervention</h1>"+
+    "<div style='display:flex;gap:22px;flex-wrap:wrap;font-size:12px;color:#374151;margin-bottom:6px'>"+
+      "<div><strong>Date :</strong> "+esc(p.date)+"</div>"+
+      "<div><strong>Type :</strong> "+typeLabel+"</div>"+
+      "<div><strong>Technicien :</strong> "+esc(p.technicien||"—")+"</div>"+
+      "<div><strong>Site :</strong> "+esc(p.site||"")+"</div>"+
+    "</div>"+
+    corps+
+    "<div style='"+H3+"'>Notes du passage</div>"+notesHtml+
+    "<div style='"+H3+"'>Recommandations du jour</div>"+recosHtml+
+    signatureHtml;
+  exportHTML("Fiche intervention "+esc(p.date)+(p.site?" - "+esc(p.site):""), body);
+}
+
 function exportRapport(prestation, item) {
   const photos = (item.photos||[]).filter(p=>p.url);
   const photosHtml = photos.length > 0
@@ -1482,6 +1626,7 @@ function Interventions({ reinterventions, setReinterventions, passagesGlobaux, s
   const [postesRongeurs, setPostesRongeurs] = useState([]);
   const [postesTous, setPostesTous] = useState([]); // liste complete pour le comptage par seuil
   const [seuilsInterv, setSeuilsInterv] = useState({}); // seuils complets tous types
+  const [planActions, setPlanActions] = useState([]); // actions 5M -> recommandations du jour sur la fiche PDF
 
   useEffect(() => {
     sbGet("postes").then(data => {
@@ -1492,6 +1637,9 @@ function Interventions({ reinterventions, setReinterventions, passagesGlobaux, s
           return n !== "Insectes volants";
         }));
       }
+    }).catch(()=>{});
+    sbGet("plan_actions").then(data => {
+      if (data && data.length > 0) setPlanActions(data.map(a => ({ ...a, photos: typeof a.photos==="string"?(function(){try{return JSON.parse(a.photos||"[]")}catch(_e){return []}})():(a.photos||[]) })));
     }).catch(()=>{});
     sbGet("seuils").then(data => {
       if (data && data.length > 0 && data[0].data) {
@@ -1756,6 +1904,12 @@ function Interventions({ reinterventions, setReinterventions, passagesGlobaux, s
                           {reinvLiees.length} réintervention(s)
                         </span>
                       )}
+                      <button
+                        onClick={e => { e.stopPropagation(); genererFicheIntervention(p, postesTous, planActions); }}
+                        title="Générer la fiche d'intervention en PDF"
+                        style={{ fontSize:10, fontWeight:700, background:"#1d4ed822", color:"#3b82f6", border:"1px solid #3b82f644", borderRadius:8, padding:"3px 10px", cursor:"pointer", fontFamily:"inherit", whiteSpace:"nowrap" }}>
+                        📄 Fiche PDF
+                      </button>
                     </div>
                     {isOpen && (
                       <div style={{ marginTop:14, paddingTop:14, borderTop:"1px solid #3d5270" }}>
@@ -7431,11 +7585,11 @@ function SaisiePassage({ seuilsGlobaux, setSeuilsGlobaux, setReinterventions, se
     sbGet("produits_biocides").then(data => { if(data&&data.length>0) setProduitsBiocides(data); }).catch(()=>{});
   }, []);
 
-  function startNew() { setForm({date:"",technicien:"",type:"Rongeurs",notes:""}); setSaisies(initSaisiesAvecMolecule({})); setView("saisie"); }
+  function startNew() { setForm({date:"",technicien:"",type:"Rongeurs",notes:"",signature:""}); setSaisies(initSaisiesAvecMolecule({})); setView("saisie"); }
   // Mode telephone : meme form + saisies (donc meme enregistrement, meme branchement
   // plan/tendances), mais saisie poste par poste via liste alphabetique + recherche.
   function startMobile() {
-    setForm({date:"",technicien:"",type:"Rongeurs",notes:""});
+    setForm({date:"",technicien:"",type:"Rongeurs",notes:"",signature:""});
     setSaisies(initSaisiesAvecMolecule({}));
     setMobPosteId(""); setMobRecherche(""); setMobValides({});
     setView("mobile");
@@ -7448,7 +7602,7 @@ function SaisiePassage({ seuilsGlobaux, setSeuilsGlobaux, setReinterventions, se
     // Convert date dd/mm/yyyy to yyyy-mm-dd for input
     const dateParts = (p.date||"").split("/");
     const dateInput = dateParts.length===3 ? dateParts[2]+"-"+dateParts[1]+"-"+dateParts[0] : p.date;
-    setForm({ date:dateInput, technicien:p.technicien||"", type:p.type||"Rongeurs", notes:p.notes||"" });
+    setForm({ date:dateInput, technicien:p.technicien||"", type:p.type||"Rongeurs", notes:p.notes||"", signature:p.signature||"" });
     setSaisies(initSaisiesAvecMolecule(saisiesData));
     setEditingPassage(p.id);
     setView("saisie");
@@ -7459,12 +7613,12 @@ function SaisiePassage({ seuilsGlobaux, setSeuilsGlobaux, setReinterventions, se
     if (!form.technicien) { alert("Veuillez choisir un technicien."); return; }
     const dateFmt = form.date.includes("-") ? form.date.split("-").reverse().join("/") : form.date;
     if (editingPassage) {
-      setPassagesData(prev=>prev.map(p=>String(p.id)===String(editingPassage)?{...p,date:dateFmt,technicien:form.technicien,type:form.type,notes:form.notes,saisies}:p));
-      sbUpdate("passages", editingPassage, {date:dateFmt,technicien:form.technicien,type:form.type,notes:form.notes||"",saisies:JSON.stringify(saisies)});
+      setPassagesData(prev=>prev.map(p=>String(p.id)===String(editingPassage)?{...p,date:dateFmt,technicien:form.technicien,type:form.type,notes:form.notes,signature:form.signature||"",saisies}:p));
+      sbUpdate("passages", editingPassage, {date:dateFmt,technicien:form.technicien,type:form.type,notes:form.notes||"",signature:form.signature||"",saisies:JSON.stringify(saisies)});
       setEditingPassage(null);
     } else {
       const id = String(Date.now());
-      const passageData = {id, contrat:CLIENT_CONFIG.contrat, date:dateFmt, technicien:form.technicien, type:form.type, statut:"Termine", notes:form.notes||"", saisies:JSON.stringify(saisies)};
+      const passageData = {id, contrat:CLIENT_CONFIG.contrat, date:dateFmt, technicien:form.technicien, type:form.type, statut:"Termine", notes:form.notes||"", signature:form.signature||"", saisies:JSON.stringify(saisies)};
       const newP = {...passageData, saisies};
       setPassagesData(prev=>[newP,...prev]);
       if (navigator.onLine) {
@@ -7680,7 +7834,7 @@ function SaisiePassage({ seuilsGlobaux, setSeuilsGlobaux, setReinterventions, se
                     <div style={{fontSize:11,color:"#7a90aa"}}>{p.technicien} — {p.type}</div>
                   </div>
                   <div style={{display:"flex",gap:6}}>
-                    <button onClick={()=>{setEditingPassage(p.id);const saisiesData=typeof p.saisies==="string"?JSON.parse(p.saisies||"{}"):p.saisies||{};setSaisies(saisiesData);const d=p.date&&p.date.includes("/")?p.date.split("/").reverse().join("-"):p.date;setForm({date:d,technicien:p.technicien,type:p.type,notes:p.notes||""});setActiveTab("saisie_tab");setView("saisie");}}
+                    <button onClick={()=>{setEditingPassage(p.id);const saisiesData=typeof p.saisies==="string"?JSON.parse(p.saisies||"{}"):p.saisies||{};setSaisies(saisiesData);const d=p.date&&p.date.includes("/")?p.date.split("/").reverse().join("-"):p.date;setForm({date:d,technicien:p.technicien,type:p.type,notes:p.notes||"",signature:p.signature||""});setActiveTab("saisie_tab");setView("saisie");}}
                       style={{background:"#1d4ed822",color:"#3b82f6",border:"1px solid #3b82f644",borderRadius:6,padding:"4px 10px",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
                       Modifier
                     </button>
@@ -8458,6 +8612,10 @@ function SaisiePassage({ seuilsGlobaux, setSeuilsGlobaux, setReinterventions, se
                     );
                   })}
                 </div>
+              </Card>
+
+              <Card style={{marginBottom:12}}>
+                <SignaturePad value={form.signature} onChange={sig=>setForm(f=>({...f,signature:sig}))}/>
               </Card>
 
               <div style={{display:"flex",gap:10}}>
