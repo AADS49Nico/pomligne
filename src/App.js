@@ -1150,7 +1150,7 @@ function genererFicheIntervention(p, postesTous, planActions){
     let photos=[]; try{ photos = Array.isArray(a.photos)?a.photos:(typeof a.photos==="string"?JSON.parse(a.photos||"[]"):[]); }catch(_e){ photos=[]; }
     const ph = (photos||[]).filter(x=>x&&x.url).map(x=>"<img src='"+x.url+"' style='max-width:180px;max-height:135px;border-radius:6px;border:1px solid #e2e8f0;object-fit:cover;margin:4px'/>").join("");
     return "<div style='border:1px solid #e5e7eb;border-radius:8px;padding:10px 12px;margin-bottom:8px'>"+
-      "<div style='font-weight:700;color:#1d4ed8'>"+esc(a.titre5m||a.type||"Action")+(a.priorite?" · "+esc(a.priorite):"")+(a.zone?" · "+esc(a.zone):"")+"</div>"+
+      "<div style='font-weight:700;color:#1d4ed8'>"+esc(a.titre5m||"Action")+(a.type?" · "+(a.type==='corrective'?'Corrective':'Préventive'):"")+(a.priorite?" · "+esc(a.priorite):"")+((a.piege_ref||a.piegeRef)?" · Poste "+esc(a.piege_ref||a.piegeRef):"")+(a.zone?" · "+esc(a.zone):"")+"</div>"+
       (a.description?"<div style='margin-top:4px'>"+esc(a.description)+"</div>":"")+
       (a.recommandation?"<div style='margin-top:4px'><strong>Recommandation :</strong> "+esc(a.recommandation)+"</div>":"")+
       (ph?"<div style='margin-top:6px'>"+ph+"</div>":"")+
@@ -7552,7 +7552,7 @@ function SaisiePassage({ seuilsGlobaux, setSeuilsGlobaux, setReinterventions, se
   // Plan d'actions (pour "créer une action" en mobile + fiche PDF du jour)
   const [planActionsSaisie, setPlanActionsSaisie] = useState([]);
   const [showActionForm, setShowActionForm] = useState(false);
-  const [actionDraft, setActionDraft] = useState({ description:"", recommandation:"", priorite:"haute", zone:"" });
+  const [actionDraft, setActionDraft] = useState({ poste:"", titre5m:"Méthode", type:"corrective", description:"", recommandation:"", priorite:"haute", zone:"" });
   const [actionPhotos, setActionPhotos] = useState([]);
   // Seuils partagés via props App
   const seuils = seuilsGlobaux;
@@ -7612,14 +7612,14 @@ function SaisiePassage({ seuilsGlobaux, setSeuilsGlobaux, setReinterventions, se
     if (!actionDraft.description && !actionDraft.recommandation) { alert("Renseignez au moins une description ou une recommandation."); return; }
     const id = "act_"+Date.now();
     const dateFmt = form.date && form.date.includes("-") ? form.date.split("-").reverse().join("/") : (form.date || new Date().toLocaleDateString("fr-FR"));
-    const row = { id, contrat:CLIENT_CONFIG.contrat, titre5m:"Méthode", type:"corrective",
+    const row = { id, contrat:CLIENT_CONFIG.contrat, titre5m:actionDraft.titre5m||"Méthode", type:actionDraft.type||"corrective",
       priorite:actionDraft.priorite||"haute", zone:actionDraft.zone||"", description:actionDraft.description||"",
-      recommandation:actionDraft.recommandation||"", technicien:form.technicien||"", piege_ref:mobPosteId||"",
+      recommandation:actionDraft.recommandation||"", technicien:form.technicien||"", piege_ref:actionDraft.poste||mobPosteId||"",
       statut:"Planifiée", date_detection:dateFmt, photos:JSON.stringify(actionPhotos||[]) };
     sbUpsert("plan_actions", row);
     const local = { ...row, photos: actionPhotos||[] };
     setPlanActionsSaisie(prev => [local, ...prev]);
-    setActionDraft({ description:"", recommandation:"", priorite:"haute", zone:"" });
+    setActionDraft({ poste:"", titre5m:"Méthode", type:"corrective", description:"", recommandation:"", priorite:"haute", zone:"" });
     setActionPhotos([]);
     setShowActionForm(false);
     alert("Action ajoutée au plan d'actions.");
@@ -7639,7 +7639,7 @@ function SaisiePassage({ seuilsGlobaux, setSeuilsGlobaux, setReinterventions, se
     setForm({date:"",technicien:"",type:"Rongeurs",notes:"",signature:""});
     setSaisies(initSaisiesAvecMolecule({}));
     setMobPosteId(""); setMobRecherche(""); setMobValides({});
-    setShowActionForm(false); setActionDraft({ description:"", recommandation:"", priorite:"haute", zone:"" }); setActionPhotos([]);
+    setShowActionForm(false); setActionDraft({ poste:"", titre5m:"Méthode", type:"corrective", description:"", recommandation:"", priorite:"haute", zone:"" }); setActionPhotos([]);
     setView("mobile");
   }
   // Modifier un passage existant EN MODE MOBILE
@@ -8298,7 +8298,30 @@ function SaisiePassage({ seuilsGlobaux, setSeuilsGlobaux, setReinterventions, se
                   </button>
                   {showActionForm && (
                     <div style={{ marginTop:10, background:"#243352", border:"1px solid #3d5270", borderRadius:10, padding:12 }}>
-                      <label style={{ fontSize:9, color:"#7a90aa", fontWeight:700, display:"block", marginBottom:3 }}>ZONE / POSTE CONCERNÉ</label>
+                      <label style={{ fontSize:9, color:"#7a90aa", fontWeight:700, display:"block", marginBottom:3 }}>POSTE</label>
+                      <select value={actionDraft.poste} onChange={function(e){ setActionDraft({...actionDraft, poste:e.target.value}); }}
+                        style={{ width:"100%", background:"#1a2540", border:"1px solid #3d5270", borderRadius:8, padding:"9px 10px", color:"#f1f5f9", fontSize:13, fontFamily:"inherit", boxSizing:"border-box", marginBottom:8 }}>
+                        <option value="">{mobPosteId ? ("— poste courant : "+mobPosteId+" —") : "— aucun / général —"}</option>
+                        {sortPostes(postes.slice()).map(function(p){ return <option key={p.id} value={p.id}>{p.id}{p.zone?" · "+p.zone:""}</option>; })}
+                      </select>
+                      <div style={{ display:"flex", gap:8, marginBottom:8 }}>
+                        <div style={{ flex:1 }}>
+                          <label style={{ fontSize:9, color:"#7a90aa", fontWeight:700, display:"block", marginBottom:3 }}>5M</label>
+                          <select value={actionDraft.titre5m} onChange={function(e){ setActionDraft({...actionDraft, titre5m:e.target.value}); }}
+                            style={{ width:"100%", background:"#1a2540", border:"1px solid #3d5270", borderRadius:8, padding:"9px 10px", color:"#f1f5f9", fontSize:13, fontFamily:"inherit", boxSizing:"border-box" }}>
+                            {["Méthode","Milieu","Matière","Main d'oeuvre","Matériel"].map(function(m){ return <option key={m} value={m}>{m}</option>; })}
+                          </select>
+                        </div>
+                        <div style={{ flex:1 }}>
+                          <label style={{ fontSize:9, color:"#7a90aa", fontWeight:700, display:"block", marginBottom:3 }}>TYPE</label>
+                          <select value={actionDraft.type} onChange={function(e){ setActionDraft({...actionDraft, type:e.target.value}); }}
+                            style={{ width:"100%", background:"#1a2540", border:"1px solid #3d5270", borderRadius:8, padding:"9px 10px", color:"#f1f5f9", fontSize:13, fontFamily:"inherit", boxSizing:"border-box" }}>
+                            <option value="corrective">Corrective</option>
+                            <option value="preventive">Préventive</option>
+                          </select>
+                        </div>
+                      </div>
+                      <label style={{ fontSize:9, color:"#7a90aa", fontWeight:700, display:"block", marginBottom:3 }}>ZONE / PRÉCISION</label>
                       <input value={actionDraft.zone} onChange={function(e){ setActionDraft({...actionDraft, zone:e.target.value}); }}
                         placeholder={mobPosteId ? ("Poste "+mobPosteId) : "Zone concernée"}
                         style={{ width:"100%", background:"#1a2540", border:"1px solid #3d5270", borderRadius:8, padding:"9px 10px", color:"#f1f5f9", fontSize:13, fontFamily:"inherit", boxSizing:"border-box", marginBottom:8 }}/>
