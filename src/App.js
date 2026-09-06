@@ -1041,7 +1041,7 @@ function exportHTML(title, htmlBody) {
 // FICHE D'INTERVENTION (PDF par passage) + SIGNATURE
 // ============================================================
 // Pad de signature electronique (souris + tactile). value = data URL PNG.
-function SignaturePad({ value, onChange }) {
+function SignaturePad({ value, onChange, label }) {
   const canvasRef = useRef(null);
   const drawing = useRef(false);
   const dirty = useRef(false);
@@ -1054,7 +1054,7 @@ function SignaturePad({ value, onChange }) {
   function effacer(){ remplirBlanc(); dirty.current=false; onChange(""); }
   return (
     <div>
-      <div style={{fontSize:10,color:"#7a90aa",fontWeight:600,textTransform:"uppercase",marginBottom:4}}>Signature technicien</div>
+      <div style={{fontSize:10,color:"#7a90aa",fontWeight:600,textTransform:"uppercase",marginBottom:4}}>{label||"Signature technicien"}</div>
       {value && !dirty.current && (
         <div style={{marginBottom:6}}>
           <img src={value} alt="Signature" style={{height:60,background:"#fff",borderRadius:6,border:"1px solid #3d5270",padding:2}}/>
@@ -1160,9 +1160,10 @@ function genererFicheIntervention(p, postesTous, planActions){
   const notesHtml = (p.notes && String(p.notes).trim()) ? "<div style='background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:10px 12px;white-space:pre-wrap;font-size:12px'>"+esc(p.notes)+"</div>" : "<div style='color:#6b7280;font-size:12px'>—</div>";
 
   const sigTech = p.signature ? "<img src='"+p.signature+"' style='height:70px;max-width:100%;background:#fff'/>" : "<div style='height:56px;border-bottom:1px solid #9ca3af'></div>";
+  const sigClient = p.signature_client ? "<img src='"+p.signature_client+"' style='height:70px;max-width:100%;background:#fff'/>" : "<div style='height:56px;border-bottom:1px solid #9ca3af'></div>";
   const signatureHtml = "<div style='display:flex;gap:40px;margin-top:26px'>"+
     "<div style='flex:1'><div style='font-size:11px;color:#6b7280;margin-bottom:6px'>Technicien : <strong>"+esc(p.technicien||"")+"</strong></div>"+sigTech+"</div>"+
-    "<div style='flex:1'><div style='font-size:11px;color:#6b7280;margin-bottom:6px'>Représentant du site</div><div style='height:56px;border-bottom:1px solid #9ca3af'></div></div>"+
+    "<div style='flex:1'><div style='font-size:11px;color:#6b7280;margin-bottom:6px'>Représentant du site</div>"+sigClient+"</div>"+
   "</div>";
 
   const typeLabel = isDeiv ? "Passage DEIV (insectes volants)" : ("Contrôle périodique"+(p.type&&p.type!=="Rongeurs"?" — "+esc(p.type):""));
@@ -7596,7 +7597,7 @@ function SaisiePassage({ seuilsGlobaux, setSeuilsGlobaux, setReinterventions, se
     const dateFmt = form.date && form.date.includes("-") ? form.date.split("-").reverse().join("/") : form.date;
     return { id: editingPassage || ("tmp_"+Date.now()), site: SITE_ACTIF, date: dateFmt,
       technicien: form.technicien||"", type: form.type||"Rongeurs", notes: form.notes||"",
-      signature: form.signature||"", saisies: saisies };
+      signature: form.signature||"", signature_client: form.signature_client||"", saisies: saisies };
   }
   // Enregistre le passage puis sort la fiche PDF (notes + signature + actions du jour)
   function validerPassageEtFiche() {
@@ -7631,12 +7632,12 @@ function SaisiePassage({ seuilsGlobaux, setSeuilsGlobaux, setReinterventions, se
     reader.readAsDataURL(file);
   }
 
-  function startNew() { setForm({date:"",technicien:"",type:"Rongeurs",notes:"",signature:""}); setSaisies(initSaisiesAvecMolecule({})); setView("saisie"); }
+  function startNew() { setForm({date:"",technicien:"",type:"Rongeurs",notes:"",signature:"",signature_client:""}); setSaisies(initSaisiesAvecMolecule({})); setView("saisie"); }
   // Mode telephone : meme form + saisies (donc meme enregistrement, meme branchement
   // plan/tendances), mais saisie poste par poste via liste alphabetique + recherche.
   function startMobile() {
     setEditingPassage(null);
-    setForm({date:"",technicien:"",type:"Rongeurs",notes:"",signature:""});
+    setForm({date:"",technicien:"",type:"Rongeurs",notes:"",signature:"",signature_client:""});
     setSaisies(initSaisiesAvecMolecule({}));
     setMobPosteId(""); setMobRecherche(""); setMobValides({});
     setShowActionForm(false); setActionDraft({ poste:"", titre5m:"Méthode", type:"corrective", description:"", recommandation:"", priorite:"haute", zone:"" }); setActionPhotos([]);
@@ -7647,7 +7648,7 @@ function SaisiePassage({ seuilsGlobaux, setSeuilsGlobaux, setReinterventions, se
     const saisiesData = typeof p.saisies === "string" ? (function(){try{return JSON.parse(p.saisies||"{}")}catch(_e){return {}}})() : (p.saisies||{});
     const dp = (p.date||"").split("/");
     const dateInput = dp.length===3 ? dp[2]+"-"+dp[1]+"-"+dp[0] : p.date;
-    setForm({ date:dateInput, technicien:p.technicien||"", type:p.type||"Rongeurs", notes:p.notes||"", signature:p.signature||"" });
+    setForm({ date:dateInput, technicien:p.technicien||"", type:p.type||"Rongeurs", notes:p.notes||"", signature:p.signature||"", signature_client:p.signature_client||"" });
     setSaisies(initSaisiesAvecMolecule(saisiesData));
     setEditingPassage(p.id);
     setMobPosteId(""); setMobRecherche(""); setMobValides({});
@@ -7662,7 +7663,7 @@ function SaisiePassage({ seuilsGlobaux, setSeuilsGlobaux, setReinterventions, se
     // Convert date dd/mm/yyyy to yyyy-mm-dd for input
     const dateParts = (p.date||"").split("/");
     const dateInput = dateParts.length===3 ? dateParts[2]+"-"+dateParts[1]+"-"+dateParts[0] : p.date;
-    setForm({ date:dateInput, technicien:p.technicien||"", type:p.type||"Rongeurs", notes:p.notes||"", signature:p.signature||"" });
+    setForm({ date:dateInput, technicien:p.technicien||"", type:p.type||"Rongeurs", notes:p.notes||"", signature:p.signature||"", signature_client:p.signature_client||"" });
     setSaisies(initSaisiesAvecMolecule(saisiesData));
     setEditingPassage(p.id);
     setView("saisie");
@@ -7673,12 +7674,12 @@ function SaisiePassage({ seuilsGlobaux, setSeuilsGlobaux, setReinterventions, se
     if (!form.technicien) { alert("Veuillez choisir un technicien."); return; }
     const dateFmt = form.date.includes("-") ? form.date.split("-").reverse().join("/") : form.date;
     if (editingPassage) {
-      setPassagesData(prev=>prev.map(p=>String(p.id)===String(editingPassage)?{...p,date:dateFmt,technicien:form.technicien,type:form.type,notes:form.notes,signature:form.signature||"",saisies}:p));
-      sbUpdate("passages", editingPassage, {date:dateFmt,technicien:form.technicien,type:form.type,notes:form.notes||"",signature:form.signature||"",saisies:JSON.stringify(saisies)});
+      setPassagesData(prev=>prev.map(p=>String(p.id)===String(editingPassage)?{...p,date:dateFmt,technicien:form.technicien,type:form.type,notes:form.notes,signature:form.signature||"",signature_client:form.signature_client||"",saisies}:p));
+      sbUpdate("passages", editingPassage, {date:dateFmt,technicien:form.technicien,type:form.type,notes:form.notes||"",signature:form.signature||"",signature_client:form.signature_client||"",saisies:JSON.stringify(saisies)});
       setEditingPassage(null);
     } else {
       const id = String(Date.now());
-      const passageData = {id, contrat:CLIENT_CONFIG.contrat, date:dateFmt, technicien:form.technicien, type:form.type, statut:"Termine", notes:form.notes||"", signature:form.signature||"", saisies:JSON.stringify(saisies)};
+      const passageData = {id, contrat:CLIENT_CONFIG.contrat, date:dateFmt, technicien:form.technicien, type:form.type, statut:"Termine", notes:form.notes||"", signature:form.signature||"", signature_client:form.signature_client||"", saisies:JSON.stringify(saisies)};
       const newP = {...passageData, saisies};
       setPassagesData(prev=>[newP,...prev]);
       if (navigator.onLine) {
@@ -7894,7 +7895,7 @@ function SaisiePassage({ seuilsGlobaux, setSeuilsGlobaux, setReinterventions, se
                     <div style={{fontSize:11,color:"#7a90aa"}}>{p.technicien} — {p.type}</div>
                   </div>
                   <div style={{display:"flex",gap:6}}>
-                    <button onClick={()=>{setEditingPassage(p.id);const saisiesData=typeof p.saisies==="string"?JSON.parse(p.saisies||"{}"):p.saisies||{};setSaisies(saisiesData);const d=p.date&&p.date.includes("/")?p.date.split("/").reverse().join("-"):p.date;setForm({date:d,technicien:p.technicien,type:p.type,notes:p.notes||"",signature:p.signature||""});setActiveTab("saisie_tab");setView("saisie");}}
+                    <button onClick={()=>{setEditingPassage(p.id);const saisiesData=typeof p.saisies==="string"?JSON.parse(p.saisies||"{}"):p.saisies||{};setSaisies(saisiesData);const d=p.date&&p.date.includes("/")?p.date.split("/").reverse().join("-"):p.date;setForm({date:d,technicien:p.technicien,type:p.type,notes:p.notes||"",signature:p.signature||"",signature_client:p.signature_client||""});setActiveTab("saisie_tab");setView("saisie");}}
                       style={{background:"#1d4ed822",color:"#3b82f6",border:"1px solid #3b82f644",borderRadius:6,padding:"4px 10px",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
                       Modifier
                     </button>
@@ -8285,9 +8286,12 @@ function SaisiePassage({ seuilsGlobaux, setSeuilsGlobaux, setReinterventions, se
                     style={{ width:"100%", background:"#1a2540", border:"1px solid #3d5270", borderRadius:8, padding:"9px 10px", color:"#f1f5f9", fontSize:13, fontFamily:"inherit", boxSizing:"border-box", resize:"vertical" }}/>
                 </div>
 
-                {/* Signature (haut) */}
+                {/* Signatures (haut) : technicien + représentant du site */}
                 <div style={{ marginBottom:12, background:"#243352", border:"1px solid #3d5270", borderRadius:10, padding:12 }}>
-                  <SignaturePad value={form.signature} onChange={function(sig){ setForm({...form, signature:sig}); }}/>
+                  <SignaturePad label="Signature technicien" value={form.signature} onChange={function(sig){ setForm({...form, signature:sig}); }}/>
+                </div>
+                <div style={{ marginBottom:12, background:"#243352", border:"1px solid #3d5270", borderRadius:10, padding:12 }}>
+                  <SignaturePad label="Signature représentant du site" value={form.signature_client} onChange={function(sig){ setForm({...form, signature_client:sig}); }}/>
                 </div>
 
                 {/* Créer une action -> plan d'actions + fiche PDF */}
@@ -8774,7 +8778,14 @@ function SaisiePassage({ seuilsGlobaux, setSeuilsGlobaux, setReinterventions, se
               </Card>
 
               <Card style={{marginBottom:12}}>
-                <SignaturePad value={form.signature} onChange={sig=>setForm(f=>({...f,signature:sig}))}/>
+                <div style={{display:"flex",gap:20,flexWrap:"wrap"}}>
+                  <div style={{flex:1,minWidth:260}}>
+                    <SignaturePad label="Signature technicien" value={form.signature} onChange={sig=>setForm(f=>({...f,signature:sig}))}/>
+                  </div>
+                  <div style={{flex:1,minWidth:260}}>
+                    <SignaturePad label="Signature représentant du site" value={form.signature_client} onChange={sig=>setForm(f=>({...f,signature_client:sig}))}/>
+                  </div>
+                </div>
               </Card>
 
               <div style={{display:"flex",gap:10}}>
