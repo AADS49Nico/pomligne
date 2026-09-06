@@ -7549,6 +7549,11 @@ function SaisiePassage({ seuilsGlobaux, setSeuilsGlobaux, setReinterventions, se
   const [mobPosteId, setMobPosteId] = useState("");
   const [mobRecherche, setMobRecherche] = useState("");
   const [mobValides, setMobValides] = useState({}); // { posteId: true } postes valides cette session
+  // Plan d'actions (pour "créer une action" en mobile + fiche PDF du jour)
+  const [planActionsSaisie, setPlanActionsSaisie] = useState([]);
+  const [showActionForm, setShowActionForm] = useState(false);
+  const [actionDraft, setActionDraft] = useState({ description:"", recommandation:"", priorite:"haute", zone:"" });
+  const [actionPhotos, setActionPhotos] = useState([]);
   // Seuils partagés via props App
   const seuils = seuilsGlobaux;
   const setSeuils = setSeuilsGlobaux;
@@ -7583,15 +7588,70 @@ function SaisiePassage({ seuilsGlobaux, setSeuilsGlobaux, setReinterventions, se
       }).catch(()=>{});
     });
     sbGet("produits_biocides").then(data => { if(data&&data.length>0) setProduitsBiocides(data); }).catch(()=>{});
+    sbGet("plan_actions").then(data => { if(data&&data.length>0) setPlanActionsSaisie(data.map(a=>({...a, photos: typeof a.photos==="string"?(function(){try{return JSON.parse(a.photos||"[]")}catch(_e){return []}})():(a.photos||[]) }))); }).catch(()=>{});
   }, []);
+
+  // Passage courant reconstitué depuis le formulaire (pour générer la fiche PDF)
+  function passageCourantFiche() {
+    const dateFmt = form.date && form.date.includes("-") ? form.date.split("-").reverse().join("/") : form.date;
+    return { id: editingPassage || ("tmp_"+Date.now()), site: SITE_ACTIF, date: dateFmt,
+      technicien: form.technicien||"", type: form.type||"Rongeurs", notes: form.notes||"",
+      signature: form.signature||"", saisies: saisies };
+  }
+  // Enregistre le passage puis sort la fiche PDF (notes + signature + actions du jour)
+  function validerPassageEtFiche() {
+    if (!form.date) { alert("Veuillez saisir une date."); return; }
+    if (!form.technicien) { alert("Veuillez choisir un technicien."); return; }
+    const p = passageCourantFiche();
+    savePassage();
+    setTimeout(function(){ try { genererFicheIntervention(p, postes, planActionsSaisie); } catch(e){ console.error(e); } }, 300);
+  }
+  // Crée une action (plan d'actions) depuis la saisie mobile — visible dans le plan
+  // d'actions ET reprise dans la fiche PDF du jour (recommandations).
+  function creerActionMobile() {
+    if (!actionDraft.description && !actionDraft.recommandation) { alert("Renseignez au moins une description ou une recommandation."); return; }
+    const id = "act_"+Date.now();
+    const dateFmt = form.date && form.date.includes("-") ? form.date.split("-").reverse().join("/") : (form.date || new Date().toLocaleDateString("fr-FR"));
+    const row = { id, contrat:CLIENT_CONFIG.contrat, titre5m:"Méthode", type:"corrective",
+      priorite:actionDraft.priorite||"haute", zone:actionDraft.zone||"", description:actionDraft.description||"",
+      recommandation:actionDraft.recommandation||"", technicien:form.technicien||"", piege_ref:mobPosteId||"",
+      statut:"Planifiée", date_detection:dateFmt, photos:JSON.stringify(actionPhotos||[]) };
+    sbUpsert("plan_actions", row);
+    const local = { ...row, photos: actionPhotos||[] };
+    setPlanActionsSaisie(prev => [local, ...prev]);
+    setActionDraft({ description:"", recommandation:"", priorite:"haute", zone:"" });
+    setActionPhotos([]);
+    setShowActionForm(false);
+    alert("Action ajoutée au plan d'actions.");
+  }
+  function ajouterPhotoAction(file) {
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = function(ev){ compresserImage(ev.target.result, 1400, 0.7).then(function(url){ setActionPhotos(prev=>[...prev, {url, name:file.name}]); }); };
+    reader.readAsDataURL(file);
+  }
 
   function startNew() { setForm({date:"",technicien:"",type:"Rongeurs",notes:"",signature:""}); setSaisies(initSaisiesAvecMolecule({})); setView("saisie"); }
   // Mode telephone : meme form + saisies (donc meme enregistrement, meme branchement
   // plan/tendances), mais saisie poste par poste via liste alphabetique + recherche.
   function startMobile() {
+    setEditingPassage(null);
     setForm({date:"",technicien:"",type:"Rongeurs",notes:"",signature:""});
     setSaisies(initSaisiesAvecMolecule({}));
     setMobPosteId(""); setMobRecherche(""); setMobValides({});
+    setShowActionForm(false); setActionDraft({ description:"", recommandation:"", priorite:"haute", zone:"" }); setActionPhotos([]);
+    setView("mobile");
+  }
+  // Modifier un passage existant EN MODE MOBILE
+  function startEditMobile(p) {
+    const saisiesData = typeof p.saisies === "string" ? (function(){try{return JSON.parse(p.saisies||"{}")}catch(_e){return {}}})() : (p.saisies||{});
+    const dp = (p.date||"").split("/");
+    const dateInput = dp.length===3 ? dp[2]+"-"+dp[1]+"-"+dp[0] : p.date;
+    setForm({ date:dateInput, technicien:p.technicien||"", type:p.type||"Rongeurs", notes:p.notes||"", signature:p.signature||"" });
+    setSaisies(initSaisiesAvecMolecule(saisiesData));
+    setEditingPassage(p.id);
+    setMobPosteId(""); setMobRecherche(""); setMobValides({});
+    setShowActionForm(false);
     setView("mobile");
   }
 
@@ -8215,6 +8275,61 @@ function SaisiePassage({ seuilsGlobaux, setSeuilsGlobaux, setReinterventions, se
                   </div>
                 </div>
 
+                {editingPassage && <div style={{fontSize:12,color:"#f59e0b",fontWeight:700,marginBottom:8}}>✎ Modification du passage</div>}
+
+                {/* Notes du passage (haut) */}
+                <div style={{ marginBottom:12 }}>
+                  <label style={{ fontSize:9, color:"#7a90aa", fontWeight:700, display:"block", marginBottom:3 }}>NOTES DU PASSAGE</label>
+                  <textarea rows={2} value={form.notes} onChange={function(e){ setForm({...form, notes:e.target.value}); }}
+                    placeholder="Observations générales du passage..."
+                    style={{ width:"100%", background:"#1a2540", border:"1px solid #3d5270", borderRadius:8, padding:"9px 10px", color:"#f1f5f9", fontSize:13, fontFamily:"inherit", boxSizing:"border-box", resize:"vertical" }}/>
+                </div>
+
+                {/* Signature (haut) */}
+                <div style={{ marginBottom:12, background:"#243352", border:"1px solid #3d5270", borderRadius:10, padding:12 }}>
+                  <SignaturePad value={form.signature} onChange={function(sig){ setForm({...form, signature:sig}); }}/>
+                </div>
+
+                {/* Créer une action -> plan d'actions + fiche PDF */}
+                <div style={{ marginBottom:14 }}>
+                  <button onClick={function(){ setShowActionForm(function(v){return !v;}); }}
+                    style={{ width:"100%", background:"#f59e0b22", color:"#f59e0b", border:"1px solid #f59e0b55", borderRadius:9, padding:"12px", fontSize:14, fontWeight:700, cursor:"pointer", fontFamily:"inherit", minHeight:46 }}>
+                    {showActionForm ? "▲ Fermer l'action" : "＋ Créer une action (plan d'actions)"}
+                  </button>
+                  {showActionForm && (
+                    <div style={{ marginTop:10, background:"#243352", border:"1px solid #3d5270", borderRadius:10, padding:12 }}>
+                      <label style={{ fontSize:9, color:"#7a90aa", fontWeight:700, display:"block", marginBottom:3 }}>ZONE / POSTE CONCERNÉ</label>
+                      <input value={actionDraft.zone} onChange={function(e){ setActionDraft({...actionDraft, zone:e.target.value}); }}
+                        placeholder={mobPosteId ? ("Poste "+mobPosteId) : "Zone concernée"}
+                        style={{ width:"100%", background:"#1a2540", border:"1px solid #3d5270", borderRadius:8, padding:"9px 10px", color:"#f1f5f9", fontSize:13, fontFamily:"inherit", boxSizing:"border-box", marginBottom:8 }}/>
+                      <label style={{ fontSize:9, color:"#7a90aa", fontWeight:700, display:"block", marginBottom:3 }}>PRIORITÉ</label>
+                      <select value={actionDraft.priorite} onChange={function(e){ setActionDraft({...actionDraft, priorite:e.target.value}); }}
+                        style={{ width:"100%", background:"#1a2540", border:"1px solid #3d5270", borderRadius:8, padding:"9px 10px", color:"#f1f5f9", fontSize:13, fontFamily:"inherit", boxSizing:"border-box", marginBottom:8 }}>
+                        <option value="haute">Haute</option><option value="moyenne">Moyenne</option><option value="basse">Basse</option>
+                      </select>
+                      <label style={{ fontSize:9, color:"#7a90aa", fontWeight:700, display:"block", marginBottom:3 }}>DESCRIPTION (constat)</label>
+                      <textarea rows={2} value={actionDraft.description} onChange={function(e){ setActionDraft({...actionDraft, description:e.target.value}); }}
+                        style={{ width:"100%", background:"#1a2540", border:"1px solid #3d5270", borderRadius:8, padding:"9px 10px", color:"#f1f5f9", fontSize:13, fontFamily:"inherit", boxSizing:"border-box", resize:"vertical", marginBottom:8 }}/>
+                      <label style={{ fontSize:9, color:"#7a90aa", fontWeight:700, display:"block", marginBottom:3 }}>RECOMMANDATION</label>
+                      <textarea rows={2} value={actionDraft.recommandation} onChange={function(e){ setActionDraft({...actionDraft, recommandation:e.target.value}); }}
+                        style={{ width:"100%", background:"#1a2540", border:"1px solid #3d5270", borderRadius:8, padding:"9px 10px", color:"#f1f5f9", fontSize:13, fontFamily:"inherit", boxSizing:"border-box", resize:"vertical", marginBottom:8 }}/>
+                      <label style={{ fontSize:9, color:"#7a90aa", fontWeight:700, display:"block", marginBottom:3 }}>PHOTOS</label>
+                      <input type="file" accept="image/*" capture="environment"
+                        onChange={function(e){ if(e.target.files&&e.target.files[0]) ajouterPhotoAction(e.target.files[0]); e.target.value=""; }}
+                        style={{ width:"100%", color:"#cbd5e1", fontSize:12, marginBottom:8 }}/>
+                      {actionPhotos.length>0 && (
+                        <div style={{ display:"flex", flexWrap:"wrap", gap:6, marginBottom:8 }}>
+                          {actionPhotos.map(function(ph,i){ return <img key={i} src={ph.url} alt="" style={{ width:60, height:60, objectFit:"cover", borderRadius:6, border:"1px solid #3d5270" }}/>; })}
+                        </div>
+                      )}
+                      <button onClick={creerActionMobile}
+                        style={{ width:"100%", background:"#f59e0b", color:"#000", border:"none", borderRadius:8, padding:"11px", fontSize:14, fontWeight:700, cursor:"pointer", fontFamily:"inherit", minHeight:44 }}>
+                        Enregistrer l'action
+                      </button>
+                    </div>
+                  )}
+                </div>
+
                 <div style={{ fontSize:11, color:"#7a90aa", marginBottom:8 }}>{nbValides} poste(s) valide(s) sur {tousPostes.length}</div>
 
                 {/* Barre de recherche + liste deroulante alphabetique de tous les postes */}
@@ -8323,10 +8438,14 @@ function SaisiePassage({ seuilsGlobaux, setSeuilsGlobaux, setReinterventions, se
                   </div>
                 )}
 
-                {/* Enregistrer tout le passage (meme savePassage que la saisie classique) */}
-                <button onClick={savePassage}
+                {/* Enregistrer le passage PUIS sortir la fiche PDF (notes + signature + actions du jour) */}
+                <button onClick={validerPassageEtFiche}
                   style={{ width:"100%", marginTop:16, background:"#1d4ed8", color:"#fff", border:"none", borderRadius:10, padding:"15px", fontSize:16, fontWeight:800, cursor:"pointer", fontFamily:"inherit", minHeight:52 }}>
-                  Enregistrer le passage
+                  {editingPassage ? "Mettre à jour + fiche PDF" : "Valider le passage + fiche PDF"}
+                </button>
+                <button onClick={savePassage}
+                  style={{ width:"100%", marginTop:8, background:"transparent", color:"#94a3b8", border:"1px solid #3d5270", borderRadius:10, padding:"11px", fontSize:13, fontWeight:600, cursor:"pointer", fontFamily:"inherit" }}>
+                  Enregistrer sans générer la fiche
                 </button>
               </div>
             );
@@ -8363,6 +8482,23 @@ function SaisiePassage({ seuilsGlobaux, setSeuilsGlobaux, setReinterventions, se
                 </button>
               )}
             </div>
+          )}
+          {view==="liste" && passagesData.length>0 && (
+            <Card style={{marginBottom:16}}>
+              <div style={{fontSize:13,fontWeight:700,color:"#f1f5f9",marginBottom:10}}>Modifier un passage en mode téléphone</div>
+              <div style={{display:"flex",flexDirection:"column",gap:6,maxHeight:320,overflowY:"auto"}}>
+                {passagesData.slice(0,25).map(function(p){
+                  return (
+                    <div key={p.id} style={{display:"flex",alignItems:"center",gap:10,background:"#1a2540",borderRadius:8,padding:"8px 12px",flexWrap:"wrap"}}>
+                      <span style={{fontFamily:"monospace",fontWeight:700,color:"#f1f5f9",fontSize:12,minWidth:82}}>{p.date}</span>
+                      <span style={{fontSize:12,color:"#94a3b8",flex:1,minWidth:120}}>{(p.type||"Rongeurs")} · {p.technicien||"—"}</span>
+                      <button onClick={function(){ startEditMobile(p); }}
+                        style={{background:"#059669",color:"#fff",border:"none",borderRadius:7,padding:"7px 12px",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>📱 Modifier</button>
+                    </div>
+                  );
+                })}
+              </div>
+            </Card>
           )}
           {view==="saisie" && (
             <div style={{marginBottom:16}}>
