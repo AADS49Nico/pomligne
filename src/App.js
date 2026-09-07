@@ -1907,7 +1907,7 @@ function Interventions({ reinterventions, setReinterventions, passagesGlobaux, s
                           {reinvLiees.length} réintervention(s)
                         </span>
                       )}
-                      {(function(){var _pp=String(p.date||"").split("/");var _dd=_pp.length===3?new Date(_pp[2]+"-"+_pp[1]+"-"+_pp[0]):new Date(0);return _dd>=new Date(2026,7,1);})() && (
+                      {(function(){var _pp=String(p.date||"").split("/");var _dd=_pp.length===3?new Date(_pp[2]+"-"+_pp[1]+"-"+_pp[0]):new Date(0);return _dd>=new Date(2026,8,1);})() && (
                       <button
                         onClick={e => { e.stopPropagation(); genererFicheIntervention(p, postesTous, planActions); }}
                         title="Générer la fiche d'intervention en PDF"
