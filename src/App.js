@@ -8345,8 +8345,8 @@ function SaisiePassage({ seuilsGlobaux, setSeuilsGlobaux, setReinterventions, se
                       <textarea rows={2} value={actionDraft.recommandation} onChange={function(e){ setActionDraft({...actionDraft, recommandation:e.target.value}); }}
                         style={{ width:"100%", background:"#1a2540", border:"1px solid #3d5270", borderRadius:8, padding:"9px 10px", color:"#f1f5f9", fontSize:13, fontFamily:"inherit", boxSizing:"border-box", resize:"vertical", marginBottom:8 }}/>
                       <label style={{ fontSize:9, color:"#7a90aa", fontWeight:700, display:"block", marginBottom:3 }}>PHOTOS</label>
-                      <input type="file" accept="image/*" capture="environment"
-                        onChange={function(e){ if(e.target.files&&e.target.files[0]) ajouterPhotoAction(e.target.files[0]); e.target.value=""; }}
+                      <input type="file" accept="image/*" multiple
+                        onChange={function(e){ if(e.target.files) Array.from(e.target.files).forEach(function(f){ ajouterPhotoAction(f); }); e.target.value=""; }}
                         style={{ width:"100%", color:"#cbd5e1", fontSize:12, marginBottom:8 }}/>
                       {actionPhotos.length>0 && (
                         <div style={{ display:"flex", flexWrap:"wrap", gap:6, marginBottom:8 }}>
@@ -14958,7 +14958,7 @@ function Audit({ seuilsGlobaux }) {
                   <label style={{fontSize:9,color:"#7a90aa",fontWeight:600,textTransform:"uppercase",display:"block",marginBottom:4}}>Photos ({(obs.photos||[]).length})</label>
                   <label style={{background:"#243352",border:"1px dashed #3d5270",borderRadius:7,padding:"5px 12px",fontSize:10,color:"#7a90aa",cursor:"pointer"}}>
                     + Ajouter photos
-                    <input type="file" accept="image/*" capture="environment" multiple style={{display:"none"}} onChange={e=>{
+                    <input type="file" accept="image/*" multiple style={{display:"none"}} onChange={e=>{
                       Array.from(e.target.files).forEach(file=>{
                         const r=new FileReader();
                         r.onload=ev=>setObsItems(prev=>prev.map(o=>o.id===obs.id?{...o,photos:[...(o.photos||[]),{url:ev.target.result,name:file.name}]}:o));
