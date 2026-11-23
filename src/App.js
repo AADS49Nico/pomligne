@@ -13162,28 +13162,13 @@ function PlanImplantation({ seuilsGlobaux }) {
         } catch(_e) { setActivePlan(allPlans[0].id); }
       }
     });
-    // Chargement des positions : on attend que le contrat ET le site soient prêts,
-    // sinon la lecture peut partir sur un mauvais site (ou vide) puis se corriger,
-    // ce qui fait "sauter" les pastilles après un changement d'onglet.
-    let posAnnule = false;
-    function chargerPositions(essai){
-      if (posAnnule) return;
-      if (!CLIENT_CONFIG.contrat || !SITE_ACTIF) {
-        if (essai < 60) setTimeout(function(){ chargerPositions(essai+1); }, 150);
-        return;
+    sbGet("poste_positions").then(data=>{
+      if(data&&data.length>0){
+        const byPlan={};
+        data.forEach(d=>{if(!byPlan[d.plan_id])byPlan[d.plan_id]=[];byPlan[d.plan_id].push({id:d.poste_id||d.id,x:d.x,y:d.y,page:d.page||0});});
+        setPosByPlan(prev=>({...prev,...byPlan}));
       }
-      sbGet("poste_positions").then(data=>{
-        if (posAnnule) return;
-        if(data&&data.length>0){
-          const byPlan={};
-          data.forEach(d=>{if(!byPlan[d.plan_id])byPlan[d.plan_id]=[];byPlan[d.plan_id].push({id:d.poste_id||d.id,x:d.x,y:d.y,page:d.page||0});});
-          // Remplace entièrement les plans chargés (pas de fusion avec un état partiel/périmé).
-          setPosByPlan(prev=>({...prev,...byPlan}));
-        }
-      }).catch(()=>{});
-    }
-    chargerPositions(0);
-    return function(){ posAnnule = true; };
+    }).catch(()=>{});
   },[]);
 
   // Chargement paresseux de l image du plan actif (base64 lourd) : les onglets et
