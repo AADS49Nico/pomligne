@@ -591,13 +591,19 @@ const ZONES_MACRO = [
 const POSTES_INIT = []; // Données chargées depuis Supabase
 
 const CRITERES_IFS = [
-  { ref: "4.14.1", libelle: "Plan de lutte antiparasitaire documenté", statut: "Conforme", date: "28/01/2026" },
-  { ref: "4.14.2", libelle: "Inspection régulière des dispositifs", statut: "Conforme", date: "24/03/2026" },
-  { ref: "4.14.3", libelle: "Enregistrement des résultats d'inspection", statut: "Conforme", date: "24/03/2026" },
-  { ref: "4.14.4", libelle: "Mesures correctives documentées", statut: "En cours", date: "28/01/2026" },
-  { ref: "4.14.5", libelle: "Personnel formé - lutte antiparasitaire", statut: "Conforme", date: "28/01/2026" },
-  { ref: "4.14.6", libelle: "Produits biocides homologués et FDS à jour", statut: "Conforme", date: "28/01/2026" },
-  { ref: "4.14.7", libelle: "Cartographie des points de contrôle", statut: "Conforme", date: "28/01/2026" },
+  { id: "ifs1",  ref: "4.13.7", libelle: "Analyse des tendances / efficacité de la lutte antiparasitaire", statut: "Conforme", date: "01/01/2026" },
+  { id: "ifs2",  ref: "4.13.2", libelle: "Analyse de risques + plan de lutte documenté", statut: "Conforme", date: "28/01/2026" },
+  { id: "ifs3",  ref: "4.13.4", libelle: "Inspection régulière des dispositifs", statut: "Conforme", date: "24/03/2026" },
+  { id: "ifs4",  ref: "4.13.4", libelle: "Enregistrement des résultats d'inspection", statut: "Conforme", date: "24/03/2026" },
+  { id: "ifs5",  ref: "4.13.4", libelle: "Mesures correctives documentées", statut: "Conforme", date: "28/01/2026" },
+  { id: "ifs6",  ref: "4.13.3", libelle: "Responsable interne compétent identifié et formé au suivi", statut: "Conforme", date: "28/01/2026" },
+  { id: "ifs7",  ref: "4.13.2", libelle: "Produits biocides homologués et FDS à jour", statut: "Conforme", date: "28/01/2026" },
+  { id: "ifs8",  ref: "4.13.2", libelle: "Cartographie des points de contrôle", statut: "Conforme", date: "28/01/2026" },
+  { id: "ifs9",  ref: "4.13.7", libelle: "Analyse de tendance des captures/consommations", statut: "Conforme", date: "01/01/2026" },
+  { id: "ifs10", ref: "4.13.7", libelle: "Seuils d'alerte définis", statut: "Conforme", date: "01/01/2026" },
+  { id: "ifs11", ref: "4.13.5", libelle: "Dispositifs conformes et fonctionnels", statut: "Conforme", date: "01/01/2026" },
+  { id: "ifs12", ref: "4.13.2", libelle: "Contrôle des zones structurelles à risque", statut: "Conforme", date: "01/01/2026" },
+  { id: "ifs13", ref: "4.13.6", libelle: "Contrôle des livraisons", statut: "Conforme", date: "01/01/2026" },
 ];
 
 const ACTIONS_INIT = []; // Données chargées depuis Supabase
@@ -1011,8 +1017,8 @@ function exportCSV(filename, headers, rows) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-function exportHTML(title, htmlBody) {
-  const win = window.open("", "_blank");
+function exportHTML(title, htmlBody, preWin) {
+  const win = preWin || window.open("", "_blank");
   const logoHeader = TOQUE_LOGO
     ? `<div style="display:flex;align-items:center;gap:14px;margin-bottom:18px;padding-bottom:14px;border-bottom:2px solid #0f2864">
         <img src="${TOQUE_LOGO}" alt="Logo client" style="height:50px;width:auto;object-fit:contain"/>
@@ -1076,8 +1082,110 @@ function _ficheExterieur(po){ if(!po)return false; if(po.type==="RE")return true
 function _ficheValide(s){ return !!s && (s.vu===true || s.vu==="true" || _ficheConsomme(s) || _ficheCaptures(s)>0); }
 
 // Genere et imprime (PDF navigateur) la fiche d'intervention d'un passage.
-function genererFicheIntervention(p, postesTous, planActions){
+// Pastille SVG (fond coloré selon seuils + contour + numéro) pour la fiche PDF.
+function pastilleFicheHTML(forme, col, label, x, y, r, scale){
+  scale = scale || 1;
+  var PC = (typeof PASTILLE_CONFIG!=="undefined" && PASTILLE_CONFIG) ? PASTILLE_CONFIG : {};
+  var cercleCol = PC.cercleColor || "#ffffff";
+  var cercleW = ((PC.cercleSize!=null?PC.cercleSize:2)) * scale;
+  var labelCol = PC.labelColor || "#ffffff";
+  var labelBase = PC.labelSize || 7;
+  var st = "fill='"+col+"' stroke='"+cercleCol+"' stroke-width='"+cercleW+"' stroke-linejoin='round'";
+  var shape;
+  if (forme==="triangle"){ var h=r*1.7; shape="<polygon points='"+x+","+(y-h*0.55)+" "+(x+r*1.15)+","+(y+h*0.45)+" "+(x-r*1.15)+","+(y+h*0.45)+"' "+st+"/>"; }
+  else if (forme==="carre"){ shape="<rect x='"+(x-r)+"' y='"+(y-r)+"' width='"+(r*2)+"' height='"+(r*2)+"' rx='"+(2*scale)+"' "+st+"/>"; }
+  else if (forme==="rect"){ shape="<rect x='"+(x-r*1.45)+"' y='"+(y-r*0.72)+"' width='"+(r*2.9)+"' height='"+(r*1.44)+"' rx='"+(2*scale)+"' "+st+"/>"; }
+  else if (forme==="ovale"){ shape="<ellipse cx='"+x+"' cy='"+y+"' rx='"+(r*1.3)+"' ry='"+(r*0.78)+"' "+st+"/>"; }
+  else { shape="<circle cx='"+x+"' cy='"+y+"' r='"+r+"' "+st+"/>"; }
+  var fs = posteLabelFontSize(label, labelBase) * scale;
+  var txt = "<text x='"+x+"' y='"+(y+fs*0.36)+"' font-size='"+fs+"' fill='"+labelCol+"' text-anchor='middle' font-weight='900' font-family='Arial,sans-serif'>"+String(label).replace(/&/g,"&amp;").replace(/</g,"&lt;")+"</text>";
+  return shape+txt;
+}
+function _dimsImage(src){
+  return new Promise(function(res){
+    if (!src) { res(null); return; }
+    try { var im = new Image(); im.onload=function(){ res({w:im.naturalWidth||900, h:im.naturalHeight||600}); }; im.onerror=function(){ res(null); }; im.src=src; }
+    catch(_e){ res(null); }
+  });
+}
+// Construit le plan d'implantation (fond image + pastilles colorées selon les
+// seuils du passage) en chaîne HTML/SVG, pour l'intégrer à la fiche d'intervention.
+async function construirePlanFiche(p, postesTous, saisies){
+  try {
+    var formes = {};
+    try { var lf = localStorage.getItem("aads_poste_formes"); if (lf) formes = JSON.parse(lf)||{}; } catch(_e){ formes = {}; }
+    if (!formes || Object.keys(formes).length===0) {
+      try { var cl = await sbFetch("config_logos?id=eq.main","GET"); var ap = cl && cl[0] && cl[0].affichage_pastilles; if (ap && ap.formes) formes = ap.formes; } catch(_e){}
+    }
+    var FORMES = Object.assign({}, POSTE_FORMES_DEFAUT, formes||{});
+    var seuils = {};
+    try { var sd = await sbGet("seuils"); if (Array.isArray(sd) && sd[0] && sd[0].data) { seuils = typeof sd[0].data==="string"?JSON.parse(sd[0].data):sd[0].data; } } catch(_e){}
+    var positions = [];
+    try { positions = await sbGet("poste_positions"); } catch(_e){ positions = []; }
+    if (!Array.isArray(positions) || positions.length===0) return "";
+    var byPlanPage = {};
+    positions.forEach(function(d){ var pid=d.plan_id; if(!pid) return; var pg=d.page||0; byPlanPage[pid]=byPlanPage[pid]||{}; (byPlanPage[pid][pg]=byPlanPage[pid][pg]||[]).push({id:d.poste_id||d.id, x:d.x, y:d.y}); });
+    var meta = {};
+    try {
+      var pm = await sbFetch("plans?select=*&contrat=eq."+CLIENT_CONFIG.contrat+filtreSite("plans")+"&order=id.asc","GET");
+      (pm||[]).forEach(function(x){ meta[x.id] = { label:x.label||"", ordre:(x.ordre==null||x.ordre===""?9999:Number(x.ordre)) }; });
+    } catch(_e){}
+    var planIds = Object.keys(byPlanPage).sort(function(a,b){ var oa=(meta[a]?meta[a].ordre:9999), ob=(meta[b]?meta[b].ordre:9999); return oa-ob || String(a).localeCompare(String(b)); });
+    var posteById = {}; (postesTous||[]).forEach(function(po){ posteById[po.id]=po; });
+    var H3b = "font-size:13px;color:#0f2864;border-bottom:1px solid #e5e7eb;padding-bottom:4px;margin:18px 0 8px";
+    var esc = function(t){ return String(t==null?"":t).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); };
+    var out = "";
+    for (var i=0; i<planIds.length; i++){
+      var planId = planIds[i];
+      var images = [], imgUrl = "";
+      try {
+        var rows = await sbFetch("plans?select=*&id=eq."+encodeURIComponent(planId)+"&contrat=eq."+CLIENT_CONFIG.contrat+filtreSite("plans"),"GET");
+        var r = rows && rows[0];
+        if (r) {
+          imgUrl = r.img_url||"";
+          try { var raw = r.images?(typeof r.images==="string"?JSON.parse(r.images):r.images):[]; if(Array.isArray(raw)) images = raw.map(function(it){ return (it&&typeof it==="object")?(it.url||""):(it||""); }); } catch(_e){}
+        }
+      } catch(_e){}
+      var label = (meta[planId] && meta[planId].label) || "";
+      var pages = Object.keys(byPlanPage[planId]).map(Number).sort(function(a,b){ return a-b; });
+      for (var pgi=0; pgi<pages.length; pgi++){
+        var pg = pages[pgi];
+        var bg = images[pg] || (pg===0 ? (images[0]||imgUrl) : "");
+        var dim = bg ? await _dimsImage(bg) : null;
+        var W = (dim && dim.w) || 900, H = (dim && dim.h) || 600;
+        var scalePast = W/900;
+        var rPast = (((typeof PASTILLE_CONFIG!=="undefined" && PASTILLE_CONFIG && PASTILLE_CONFIG.size) ? PASTILLE_CONFIG.size : 22)/2) * scalePast;
+        var inner = "";
+        if (bg) inner += "<image href='"+bg+"' xlink:href='"+bg+"' x='0' y='0' width='"+W+"' height='"+H+"' preserveAspectRatio='none'/>";
+        var nb = 0;
+        byPlanPage[planId][pg].forEach(function(pt){
+          var po = posteById[pt.id]; if(!po) return;
+          if (po.statut==="Désactivé") return;
+          var s = (saisies && saisies[pt.id]) || {};
+          var coul = couleurSeuilPoste(po, s, seuils);
+          var col = coul==="rouge"?"#ef4444":(coul==="orange"?"#f59e0b":"#22c55e");
+          var x = (parseFloat(pt.x)/100)*W, y=(parseFloat(pt.y)/100)*H;
+          if (isNaN(x)||isNaN(y)) return;
+          var forme = FORMES[categorieForme(po)]||"rond";
+          inner += pastilleFicheHTML(forme, col, pt.id, x, y, rPast, scalePast); nb++;
+        });
+        if (nb===0 && !bg) continue;
+        var titre = "Plan d'implantation" + (label?" — "+esc(label):"") + (pages.length>1?(" (page "+(pg+1)+")"):"");
+        out += "<div style='"+H3b+"'>"+titre+"</div>"+
+          "<svg xmlns='http://www.w3.org/2000/svg' xmlns:xlink='http://www.w3.org/1999/xlink' viewBox='0 0 "+W+" "+H+"' style='width:100%;display:block;background:#fff;border:1px solid #e5e7eb;border-radius:6px;margin-bottom:12px'>"+inner+"</svg>";
+      }
+    }
+    if (out) out = "<div style='font-size:11px;color:#6b7280;margin:6px 0 2px'>Vert = RAS · Orange = activité modérée · Rouge = activité forte / capture</div>" + out;
+    return out;
+  } catch(_e){ return ""; }
+}
+
+async function genererFicheIntervention(p, postesTous, planActions){
   const esc = t=>String(t==null?"":t).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+  // Ouvre la fenêtre tout de suite (dans le geste de clic) pour éviter le blocage
+  // des popups : le contenu (qui nécessite des chargements asynchrones) est écrit après.
+  let _ficheWin = null;
+  try { _ficheWin = window.open("", "_blank"); if (_ficheWin) _ficheWin.document.write("<!doctype html><title>Fiche…</title><body style='font-family:system-ui,sans-serif;padding:24px;color:#555'>Génération de la fiche d'intervention…</body>"); } catch(_e){ _ficheWin = null; }
   let saisies = {};
   try { saisies = typeof p.saisies==="string" ? JSON.parse(p.saisies||"{}") : (p.saisies||{}); } catch(_e){ saisies = {}; }
   const posteById = {}; (postesTous||[]).forEach(po=>{ posteById[po.id]=po; });
@@ -1119,7 +1227,7 @@ function genererFicheIntervention(p, postesTous, planActions){
     }).join("");
     return "<div style='"+H3+"'>"+titre+" — "+st.t+" touché(s) / "+st.c+" contrôlé(s) · "+st.taux+"% d'activité</div>"+
       "<table style='width:100%;border-collapse:collapse;font-size:11px'><thead><tr>"+
-      ["Poste","Zone","Macro-zone","État","Molécule","Captures"].map(h=>"<th style='background:#f1f5f9;border:1px solid #e5e7eb;padding:5px 8px;text-align:left'>"+h+"</th>").join("")+
+      ["Poste","Zone","Macro-zone","État","Molécule","Captures"].map(h=>"<th style='background:#0f2864;color:#ffffff;border:1px solid #0f2864;padding:6px 8px;text-align:left;font-weight:700'>"+h+"</th>").join("")+
       "</tr></thead><tbody>"+rows+"</tbody></table>";
   }
 
@@ -1130,7 +1238,7 @@ function genererFicheIntervention(p, postesTous, planActions){
     const rows = Object.keys(saisies).filter(function(id){ var s=saisies[id]||{}; var tt=CATS.reduce(function(a,c){return a+(parseInt(s["iv_"+c]||0)||0);},0); return s.vu===true||tt>0; }).map(id=>{ const s=saisies[id]||{}; const tot=CATS.reduce((a,c)=>a+(parseInt(s["iv_"+c]||0)||0),0); const po=posteById[id]||{}; return "<tr><td style='border:1px solid #e5e7eb;padding:4px 8px;font-family:monospace;font-weight:700'>"+esc(id)+"</td><td style='border:1px solid #e5e7eb;padding:4px 8px'>"+esc(po.zone||"")+"</td><td style='border:1px solid #e5e7eb;padding:4px 8px;text-align:center'>"+tot+"</td></tr>"; }).join("");
     corps = "<div style='"+H3+"'>Appareils DEIV — captures</div>"+
       "<table style='width:100%;border-collapse:collapse;font-size:11px'><thead><tr>"+
-      ["Appareil","Zone","Insectes capturés"].map(h=>"<th style='background:#f1f5f9;border:1px solid #e5e7eb;padding:5px 8px;text-align:left'>"+h+"</th>").join("")+
+      ["Appareil","Zone","Insectes capturés"].map(h=>"<th style='background:#0f2864;color:#ffffff;border:1px solid #0f2864;padding:6px 8px;text-align:left;font-weight:700'>"+h+"</th>").join("")+
       "</tr></thead><tbody>"+rows+"</tbody></table>";
   } else {
     corps = "<div style='display:flex;gap:12px;flex-wrap:wrap;margin:14px 0'>"+
@@ -1169,19 +1277,23 @@ function genererFicheIntervention(p, postesTous, planActions){
   "</div>";
 
   const typeLabel = isDeiv ? "Passage DEIV (insectes volants)" : ("Contrôle périodique"+(p.type&&p.type!=="Rongeurs"?" — "+esc(p.type):""));
+  // Plan d'implantation avec pastilles colorées selon l'état du passage.
+  let planHtml = "";
+  try { planHtml = await construirePlanFiche(p, postesTous, saisies); } catch(_e){ planHtml = ""; }
   const body =
     "<h1 style='font-size:20px;color:#0f2864;margin:0 0 6px'>Fiche d'intervention</h1>"+
     "<div style='display:flex;gap:22px;flex-wrap:wrap;font-size:12px;color:#374151;margin-bottom:6px'>"+
       "<div><strong>Date :</strong> "+esc(p.date)+"</div>"+
       "<div><strong>Type :</strong> "+typeLabel+"</div>"+
       "<div><strong>Technicien :</strong> "+esc(p.technicien||"—")+"</div>"+
-      "<div><strong>Site :</strong> "+esc(p.site||"")+"</div>"+
+      "<div><strong>Site :</strong> "+esc(CLIENT_CONFIG.nom||"")+(((SITES_DISPO||[]).find(function(x){return String(x.id)===String(p.site);})||{}).site?(" — "+esc(((SITES_DISPO||[]).find(function(x){return String(x.id)===String(p.site);})||{}).site)):(p.site?(" — "+esc(p.site)):""))+"</div>"+
     "</div>"+
     corps+
+    planHtml+
     "<div style='"+H3+"'>Notes du passage</div>"+notesHtml+
     "<div style='"+H3+"'>Recommandations du jour</div>"+recosHtml+
     signatureHtml;
-  exportHTML("Fiche intervention "+esc(p.date)+(p.site?" - "+esc(p.site):""), body);
+  exportHTML("Fiche intervention "+esc(p.date)+(p.site?" - "+esc(p.site):""), body, _ficheWin);
 }
 
 function exportRapport(prestation, item) {
@@ -3310,7 +3422,7 @@ function Conformite() {
   useEffect(() => {
     sbGet("conformite_ifs").then(data => {
       if (data && data.length > 0) setCriteres(data);
-      else CRITERES_IFS.forEach(c => sbUpsert("conformite_ifs", { id: c.ref, contrat: CLIENT_CONFIG.contrat, ref: c.ref, libelle: c.libelle, statut: c.statut, date: c.date||"" }));
+      else CRITERES_IFS.forEach(c => sbUpsert("conformite_ifs", { id: c.id, contrat: CLIENT_CONFIG.contrat, ref: c.ref, libelle: c.libelle, statut: c.statut, date: c.date||"" }));
     }).catch(()=>{});
   }, []);
 
@@ -3320,26 +3432,25 @@ function Conformite() {
   const pct        = criteres.length > 0 ? Math.round(conformes / criteres.filter(c=>c.statut!=="Non applicable").length * 100) : 0;
   const pctColor   = pct >= 90 ? "#22c55e" : pct >= 70 ? "#f59e0b" : "#ef4444";
 
-  function startEdit(c) { setEditing(c.ref); setDraft({...c}); }
+  function startEdit(c) { setEditing(c.id); setDraft({...c}); }
   function saveEdit() {
     const dateFmt = draft.date && draft.date.includes("-") ? draft.date.split("-").reverse().join("/") : draft.date;
     const updated = {...draft, date: dateFmt};
-    setCriteres(prev => prev.map(c => c.ref === editing ? updated : c));
-    // Upsert (cree ou met a jour) : plus robuste qu un PATCH si la ligne n existe
-    // pas encore pour ce site.
-    sbUpsert("conformite_ifs", { id: editing, contrat: CLIENT_CONFIG.contrat, ref: updated.ref||editing, libelle:updated.libelle, statut:updated.statut, date:updated.date||"" });
+    setCriteres(prev => prev.map(c => c.id === editing ? updated : c));
+    sbUpsert("conformite_ifs", { id: editing, contrat: CLIENT_CONFIG.contrat, ref: updated.ref||"", libelle:updated.libelle, statut:updated.statut, date:updated.date||"" });
     setEditing(null);
   }
-  function deleteCritere(ref) {
-    setCriteres(prev => prev.filter(c => c.ref !== ref));
-    sbDelete("conformite_ifs", ref);
+  function deleteCritere(id) {
+    setCriteres(prev => prev.filter(c => c.id !== id));
+    sbDelete("conformite_ifs", id);
   }
   function addCritere() {
     if (!newC.ref || !newC.libelle) return;
     const dateFmt = newC.date && newC.date.includes("-") ? newC.date.split("-").reverse().join("/") : newC.date;
-    const c = {...newC, date: dateFmt};
+    const id = "ifs_"+Date.now();
+    const c = {...newC, id, date: dateFmt};
     setCriteres(prev => [...prev, c]);
-    sbUpsert("conformite_ifs", { id: c.ref, contrat: CLIENT_CONFIG.contrat, ref: c.ref, libelle: c.libelle, statut: c.statut, date: c.date||"" });
+    sbUpsert("conformite_ifs", { id: c.id, contrat: CLIENT_CONFIG.contrat, ref: c.ref, libelle: c.libelle, statut: c.statut, date: c.date||"" });
     setNewC({ ref:"", libelle:"", statut:"En cours", date:"" });
     setShowAdd(false);
   }
@@ -3427,8 +3538,8 @@ function Conformite() {
           <div>Ref.</div><div>Exigence</div><div>Statut</div><div>Verifie le</div><div>Action</div>
         </div>
         {criteres.map((c, i) => (
-          <div key={c.ref}>
-            {editing === c.ref ? (
+          <div key={c.id}>
+            {editing === c.id ? (
               <div style={{ padding:"12px 18px", borderTop:"1px solid #3d5270", background:"#243352" }}>
                 <div style={{ display:"grid", gridTemplateColumns:"80px 1fr 130px 110px 80px", gap:10, alignItems:"center" }}>
                   <input value={draft.ref} onChange={e=>setDraft(p=>({...p,ref:e.target.value}))} style={{...inpStyle,fontSize:11}}/>
@@ -3451,7 +3562,7 @@ function Conformite() {
                 <div style={{ fontSize:12, color:"#7a90aa" }}>{c.date}</div>
                 <div style={{ display:"flex", gap:4 }}>
                   <button onClick={()=>startEdit(c)} style={{ background:"#1d4ed822", color:"#3b82f6", border:"1px solid #3b82f644", borderRadius:5, padding:"2px 7px", fontSize:10, fontWeight:700, cursor:"pointer", fontFamily:"inherit" }}>Edit</button>
-                  <button onClick={()=>deleteCritere(c.ref)} style={{ background:"#ef444422", color:"#ef4444", border:"1px solid #ef444433", borderRadius:5, padding:"2px 6px", fontSize:10, fontWeight:700, cursor:"pointer", fontFamily:"inherit" }}>X</button>
+                  <button onClick={()=>deleteCritere(c.id)} style={{ background:"#ef444422", color:"#ef4444", border:"1px solid #ef444433", borderRadius:5, padding:"2px 6px", fontSize:10, fontWeight:700, cursor:"pointer", fontFamily:"inherit" }}>X</button>
                 </div>
               </div>
             )}
@@ -7541,6 +7652,9 @@ function SaisiePassage({ seuilsGlobaux, setSeuilsGlobaux, setReinterventions, se
   const [saisies, setSaisies] = useState({});
   const [postes, setPostes]   = useState(POSTES_INIT);
   const [produitsBiocides, setProduitsBiocides] = useState([]);
+  // Mémorise l'ancienne molécule (dernière connue) par poste, FIGÉE au début de la
+  // saisie : choisir la nouvelle molécule ne doit pas modifier l'affichage de l'ancienne.
+  const ancMolRef = React.useRef({});
   const [showReinvForm, setShowReinvForm] = useState(false);
   const [reinvForm, setReinvForm] = useState({ date:"", technicien:"", poste:"", anomalie:"", statut:"En cours", observations:"", actions:[] });
   const [editingReinv, setEditingReinv] = useState(null);   // id du controle post-conso en cours d edition
@@ -7647,6 +7761,19 @@ function SaisiePassage({ seuilsGlobaux, setSeuilsGlobaux, setReinterventions, se
     setShowActionForm(false); setActionDraft({ poste:"", titre5m:"Méthode", type:"corrective", description:"", recommandation:"", priorite:"haute", zone:"" }); setActionPhotos([]);
     setView("mobile");
   }
+  // Calcule les postes déjà renseignés (état posé, ou capture/iv > 0) pour reprendre
+  // une saisie là où elle en était.
+  function calcMobValides(saisiesData) {
+    const v = {};
+    Object.keys(saisiesData||{}).forEach(function(id){
+      const x = saisiesData[id]; if (!x) return;
+      const done = (x.etat !== undefined && x.etat !== "")
+        || x.vu === true
+        || Object.keys(x).some(function(k){ return (k.indexOf("cap_")===0 || k.indexOf("iv_")===0) && parseInt(x[k]||0) > 0; });
+      if (done) v[id] = true;
+    });
+    return v;
+  }
   // Modifier un passage existant EN MODE MOBILE
   function startEditMobile(p) {
     const saisiesData = typeof p.saisies === "string" ? (function(){try{return JSON.parse(p.saisies||"{}")}catch(_e){return {}}})() : (p.saisies||{});
@@ -7655,7 +7782,8 @@ function SaisiePassage({ seuilsGlobaux, setSeuilsGlobaux, setReinterventions, se
     setForm({ date:dateInput, technicien:p.technicien||"", type:p.type||"Rongeurs", notes:p.notes||"", signature:p.signature||"", signature_client:p.signature_client||"" });
     setSaisies(initSaisiesAvecMolecule(saisiesData));
     setEditingPassage(p.id);
-    setMobPosteId(""); setMobRecherche(""); setMobValides({});
+    // Reprise : les postes déjà saisis sont marqués comme validés (compteur + liste).
+    setMobPosteId(""); setMobRecherche(""); setMobValides(calcMobValides(saisiesData));
     setShowActionForm(false);
     setView("mobile");
   }
@@ -7797,9 +7925,12 @@ function SaisiePassage({ seuilsGlobaux, setSeuilsGlobaux, setReinterventions, se
   // Pré-remplir la molécule depuis le poste au chargement de la saisie
   function initSaisiesAvecMolecule(saisiesData) {
     const enriched = {...saisiesData};
+    // Fige l'ancienne molécule de chaque poste au moment où la saisie s'ouvre.
+    ancMolRef.current = {};
     postes.forEach(p=>{
       if ((p.nuisible||"Rongeurs")!=="Rongeurs") return;
       if (!enriched[p.id]) enriched[p.id] = {};
+      ancMolRef.current[p.id] = p.molecule_actuelle || "Placebo";
       // Molecule pre-remplie depuis la derniere saisie connue, Placebo par defaut
       if (!enriched[p.id].molecule) enriched[p.id].molecule = p.molecule_actuelle || "Placebo";
       // Etat pre-rempli sur Aucune : le poste compte comme controle sans clic
@@ -8388,7 +8519,7 @@ function SaisiePassage({ seuilsGlobaux, setSeuilsGlobaux, setReinterventions, se
                       <div>
                         <div style={{ marginBottom:12 }}>
                           <label style={{ fontSize:10, color:"#7a90aa", fontWeight:700, display:"block", marginBottom:4 }}>ANCIENNE MOLECULE (derniere connue)</label>
-                          <div style={{ background:"#1a2540", border:"1px solid #3d5270", borderRadius:8, padding:"9px 12px", color:"#94a3b8", fontSize:13 }}>{poste.molecule_actuelle || "Placebo"}</div>
+                          <div style={{ background:"#1a2540", border:"1px solid #3d5270", borderRadius:8, padding:"9px 12px", color:"#94a3b8", fontSize:13 }}>{(ancMolRef.current && ancMolRef.current[poste.id]) || poste.molecule_actuelle || "Placebo"}</div>
                         </div>
                         <div style={{ marginBottom:14 }}>
                           <label style={{ fontSize:10, color:"#7a90aa", fontWeight:700, display:"block", marginBottom:4 }}>NOUVELLE MOLECULE</label>
@@ -10463,22 +10594,30 @@ function ContratDevis() {
 // RÉGLEMENTATIONS 3D — nettoyées
 // ============================================================
 function Reglementations() {
-  const FAMILLES_INIT = ["Biocides", "Certiphyto", "IFS", "Desinsectisation", "General"];
-  const STATUTS  = ["En vigueur", "Applicable", "Abroge"];
-  const FCOL_BASE = { Biocides:"#3b82f6", Certiphyto:"#8b5cf6", IFS:"#22c55e", Desinsectisation:"#f59e0b", General:"#7a90aa" };
+  const FAMILLES_INIT = ["Biocides", "Certibiocide", "Rodenticides", "Sécurité", "Alimentaire / IFS", "Normes"];
+  const STATUTS  = ["Réglementaire", "Référentiel", "Norme volontaire", "Selon AMM"];
+  const FCOL_BASE = { Biocides:"#3b82f6", Certibiocide:"#8b5cf6", Rodenticides:"#ef4444", "Sécurité":"#f59e0b", "Alimentaire / IFS":"#22c55e", Normes:"#06b6d4" };
   const EXTRA_COLORS = ["#ef4444","#06b6d4","#f97316","#ec4899","#14b8a6","#a855f7","#84cc16","#fb923c"];
+  // Couleur du badge de statut (reprend les couleurs du portail Hemp It).
+  const SCOLOR_REG = { "Réglementaire":"#22c55e", "Référentiel":"#3b82f6", "Norme volontaire":"#f59e0b", "Selon AMM":"#8b5cf6" };
+  const scolReg = s => SCOLOR_REG[s] || "#f59e0b";
   const inpStyle = inp();
 
   const REGLEMENTS_INIT = [
-    { id:"1", ref:"Reglement UE 528/2012", titre:"Mise sur le marche des produits biocides", famille:"Biocides", statut:"En vigueur", impact:"Verification AMM SECUVIA et KRYPTO — renouvellement obligatoire avant expiration." },
-    { id:"2", ref:"Arrete du 7 fevrier 2012", titre:"Agrements et certifications — protection des vegetaux", famille:"Certiphyto", statut:"En vigueur", impact:"Certiphyto obligatoire — validite 5 ans — recyclage obligatoire." },
-    { id:"3", ref:"IFS Food v8 — Section 4.14", titre:"Lutte antiparasitaire en sites de production alimentaire", famille:"IFS", statut:"En vigueur", impact:"Plan documente, cartographie, inspections regulieres, enregistrement des resultats." },
-    { id:"4", ref:"Reglement UE 2021/1099", titre:"Approbation conditionnelle anticoagulants 2e generation", famille:"Biocides", statut:"En vigueur", impact:"Usage SECUVIA restreint aux BOBBYBOX exterieurs fermes — aucun appat libre." },
-    { id:"5", ref:"Circulaire DGS 2004-185", titre:"Lutte contre insectes vecteurs en milieu alimentaire", famille:"Desinsectisation", statut:"En vigueur", impact:"Plan de gestion et historique des traitements obligatoires." },
-    { id:"6", ref:"NF X50-790 AFNOR", titre:"Entreprises de services 3D — bonnes pratiques", famille:"General", statut:"Applicable", impact:"AADS respecte les principes de cette norme dans toutes ses prestations." },
-    { id:"7", ref:"Paquet hygiene CE 852/2004", titre:"Hygiene des denrees alimentaires", famille:"IFS", statut:"En vigueur", impact:"Applicable aux sites de production alimentaire — tracabilite obligatoire." },
-    { id:"8", ref:"Arrete du 9 octobre 2013 — Art. 6", titre:"Alternance des molecules rodenticides", famille:"Biocides", statut:"En vigueur", impact:"Obligation de rotation des matieres actives anticoagulantes. L alternance doit etre documentee." },
-    { id:"9", ref:"Arrete du 9 octobre 2013 — Art. 8", titre:"Appatage non permanent — sauf justification ecrite", famille:"Biocides", statut:"En vigueur", impact:"L appatage permanent est interdit sauf justification ecrite motivee. Postes interieurs en placebo par defaut." },
+    { id:"r1",  ref:"Règlement (UE) n° 528/2012", titre:"Mise à disposition sur le marché et utilisation des produits biocides", famille:"Biocides", statut:"Réglementaire", impact:"" },
+    { id:"r2",  ref:"Règlement CE n° 852/2004", titre:"Hygiène alimentaire et maîtrise des organismes nuisibles", famille:"Alimentaire / IFS", statut:"Réglementaire", impact:"" },
+    { id:"r3",  ref:"IFS Food v8 – § 4.13", titre:"Surveillance et maîtrise des nuisibles en industrie alimentaire", famille:"Alimentaire / IFS", statut:"Référentiel", impact:"" },
+    { id:"r4",  ref:"NF EN 16636", titre:"Services de gestion des nuisibles – exigences et compétences", famille:"Normes", statut:"Norme volontaire", impact:"" },
+    { id:"r5",  ref:"Conditions d'AMM des rodenticides utilisés", titre:"Appâtage permanent, fréquence de contrôle et conditions d'utilisation", famille:"Rodenticides", statut:"Selon AMM", impact:"" },
+    { id:"r6",  ref:"Code de l'environnement – gestion des déchets dangereux", titre:"Gestion des produits, appâts et emballages usagés", famille:"Sécurité", statut:"Réglementaire", impact:"" },
+    { id:"r7",  ref:"Code de l'environnement – art. L.522-1 à L.522-19", titre:"Autorisation et utilisation des produits biocides en France", famille:"Biocides", statut:"Réglementaire", impact:"" },
+    { id:"r8",  ref:"Arrêté du 9 octobre 2013 modifié", titre:"Certibiocide nuisibles", famille:"Certibiocide", statut:"Réglementaire", impact:"" },
+    { id:"r9",  ref:"Arrêté du 9 octobre 2013 modifié", titre:"Certibiocide désinfectants", famille:"Certibiocide", statut:"Réglementaire", impact:"" },
+    { id:"r10", ref:"AMM du produit biocide utilisé", titre:"Respect des usages et conditions d'emploi autorisés", famille:"Biocides", statut:"Réglementaire", impact:"" },
+    { id:"r11", ref:"Règlement REACH (CE) n° 1907/2006", titre:"Fiches de données de sécurité des produits", famille:"Sécurité", statut:"Réglementaire", impact:"" },
+    { id:"r12", ref:"Règlement CLP (CE) n° 1272/2008", titre:"Étiquetage, classification et emballage des produits chimiques", famille:"Sécurité", statut:"Réglementaire", impact:"" },
+    { id:"r13", ref:"Code du travail – R.4412-1 et suivants", titre:"Prévention du risque chimique des salariés", famille:"Sécurité", statut:"Réglementaire", impact:"" },
+    { id:"r14", ref:"Code de la santé publique – R.3116-12", titre:"Dératisation, désinsectisation et utilisation de gaz toxiques", famille:"Sécurité", statut:"Réglementaire", impact:"" },
   ];
 
   const [reglements, setReglements] = useState(REGLEMENTS_INIT);
@@ -10486,7 +10625,7 @@ function Reglementations() {
   const [sel, setSel]               = useState(null);
   const [showForm, setShowForm]     = useState(false);
   const [editing, setEditing]       = useState(null);
-  const [form, setForm]             = useState({ ref:"", titre:"", famille:"Biocides", statut:"En vigueur", impact:"" });
+  const [form, setForm]             = useState({ ref:"", titre:"", famille:"Biocides", statut:"Réglementaire", impact:"" });
   const [famillesList, setFamillesList] = useState(FAMILLES_INIT);
   const [newFamille, setNewFamille]     = useState("");
 
@@ -10497,7 +10636,7 @@ function Reglementations() {
     }).catch(()=>{});
   }, []);
 
-  function startAdd() { setForm({ ref:"", titre:"", famille:"Biocides", statut:"En vigueur", impact:"" }); setEditing(null); setShowForm(true); }
+  function startAdd() { setForm({ ref:"", titre:"", famille:"Biocides", statut:"Réglementaire", impact:"" }); setEditing(null); setShowForm(true); }
   function startEdit(r) { setForm({...r}); setEditing(r.id); setShowForm(true); setSel(null); }
 
   function save() {
@@ -10543,7 +10682,7 @@ function Reglementations() {
               <td style="font-weight:700;color:${fc};width:15%">${r.famille}</td>
               <td style="font-family:monospace;font-size:11px;width:20%">${r.ref}</td>
               <td style="font-weight:700;width:30%">${r.titre}</td>
-              <td style="width:10%;text-align:center;font-weight:700;color:${r.statut==="En vigueur"?"#16a34a":"#d97706"}">${r.statut}</td>
+              <td style="width:10%;text-align:center;font-weight:700;color:${scolReg(r.statut)}">${r.statut}</td>
               <td style="font-size:12px">${r.impact||""}</td>
             </tr>`;
           }).join("");
@@ -10645,7 +10784,7 @@ function Reglementations() {
                 <div style={{ fontSize:11, color:"#7a90aa", fontFamily:"monospace", marginBottom:1 }}>{r.ref}</div>
                 <div style={{ fontSize:13, fontWeight:700, color:"#f1f5f9" }}>{r.titre}</div>
               </div>
-              <Badge label={r.statut} color={r.statut==="En vigueur"?"#22c55e":"#f59e0b"}/>
+              <Badge label={r.statut} color={scolReg(r.statut)}/>
               <div style={{ display:"flex", gap:4 }} onClick={e=>e.stopPropagation()}>
                 <button onClick={()=>startEdit(r)} style={{ background:"#1d4ed822", color:"#3b82f6", border:"1px solid #3b82f644", borderRadius:5, padding:"2px 8px", fontSize:10, fontWeight:700, cursor:"pointer", fontFamily:"inherit" }}>Edit</button>
                 <button onClick={()=>deleteRegl(r.id)} style={{ background:"#ef444422", color:"#ef4444", border:"1px solid #ef444433", borderRadius:5, padding:"2px 6px", fontSize:10, fontWeight:700, cursor:"pointer", fontFamily:"inherit" }}>X</button>
@@ -13023,13 +13162,28 @@ function PlanImplantation({ seuilsGlobaux }) {
         } catch(_e) { setActivePlan(allPlans[0].id); }
       }
     });
-    sbGet("poste_positions").then(data=>{
-      if(data&&data.length>0){
-        const byPlan={};
-        data.forEach(d=>{if(!byPlan[d.plan_id])byPlan[d.plan_id]=[];byPlan[d.plan_id].push({id:d.poste_id||d.id,x:d.x,y:d.y,page:d.page||0});});
-        setPosByPlan(prev=>({...prev,...byPlan}));
+    // Chargement des positions : on attend que le contrat ET le site soient prêts,
+    // sinon la lecture peut partir sur un mauvais site (ou vide) puis se corriger,
+    // ce qui fait "sauter" les pastilles après un changement d'onglet.
+    let posAnnule = false;
+    function chargerPositions(essai){
+      if (posAnnule) return;
+      if (!CLIENT_CONFIG.contrat || !SITE_ACTIF) {
+        if (essai < 60) setTimeout(function(){ chargerPositions(essai+1); }, 150);
+        return;
       }
-    }).catch(()=>{});
+      sbGet("poste_positions").then(data=>{
+        if (posAnnule) return;
+        if(data&&data.length>0){
+          const byPlan={};
+          data.forEach(d=>{if(!byPlan[d.plan_id])byPlan[d.plan_id]=[];byPlan[d.plan_id].push({id:d.poste_id||d.id,x:d.x,y:d.y,page:d.page||0});});
+          // Remplace entièrement les plans chargés (pas de fusion avec un état partiel/périmé).
+          setPosByPlan(prev=>({...prev,...byPlan}));
+        }
+      }).catch(()=>{});
+    }
+    chargerPositions(0);
+    return function(){ posAnnule = true; };
   },[]);
 
   // Chargement paresseux de l image du plan actif (base64 lourd) : les onglets et
